@@ -1,76 +1,54 @@
-# DBSJP Revision Hub — Multi-subject prototype V2
+# DBSJP Revision Hub — V3 (Content-first)
 
-A free-to-run Streamlit revision prototype based on the **DBSJP Key Stage 4 Options Booklet 2026–27**.
+This version deliberately focuses **only** on students selecting a subject and topic, revising useful content and practising one question at a time. **No student accounts or progress dashboards** are included.
 
-## What's included
+## What is ready
 
-- 28 DBSJP GCSE, IGCSE, BTEC and school-curriculum pathways, with 250+ selectable *booklet-level* themes.
-- Subject → area → topic → **Revise** or **Test myself**.
-- Mathematics: confirmed Pearson Edexcel International GCSE Mathematics A **4MA1 Higher Tier**, including four working parameterised maths skills with exact-answer SymPy marking, hints, optional second attempt and worked solution.
-- Other subjects: original, free, **self-assessed** retrieval practice prompts for every listed theme. No false claims of automatic grades without an AI key.
-- Optional Gemini API integration to write **original** questions and provide **indicative** feedback. No paid account is necessary to run offline practice.
-- Adaptive difficulty suggestions, topic-level progress, second-attempt/skipped tracking, JSON export/import.
-- Official exam-board past-paper *links*, not scraped or reproduced paper contents.
-- Simple course catalogue and clear verification warnings.
+- Catalogue of 28 DBSJP subject pathways based on the school's options booklet.
+- 14 original, editorially written topic revision modules across 11+ subject areas, including unseen poetry, science, geography, history, business, psychology and computer science.
+- Four original Mathematics question generators with SymPy final-answer verification, using confirmed Pearson Edexcel International GCSE Mathematics A (4MA1), Higher Tier.
+- Topic-specific practice questions with model answers, hints and an optional second attempt.
+- Optional Google Gemini API support to generate original questions and give indicative feedback; it is **not needed** to use the offline content.
+- Links to official exam board websites for past-paper access. We **do not** copy or upload copyrighted past-paper questions to AI.
 
-**IMPORTANT:** This is a substantial **framework with broad coverage**, not a claim that all 28 awarding-body specifications, thousands of exact syllabus points, videos and exam-style marking rubrics are already authenticated. Most non-Mathematics topics come from the school booklet or a provisional teaching overview. Course codes and topic-level links must be verified before claiming exact exam-board alignment. In particular, BTEC options may depend on the school's chosen units. See `courses/catalog.py`.
+## Scope and honesty
 
-## Deploy to existing Streamlit app
+Course index entries are not all equivalent to fully mapped official specifications. Only DBSJP Mathematics 4MA1 is confirmed directly by the user. Some course identifiers come from the options booklet or previous checking, and others remain provisional. Detailed reviewed learning notes are only shown on prepared topics. Other topics clearly show that content is not yet prepared. Non-mathematics offline questions use **self-assessment**, not automated grades. The pilot does not store student answers or progress between sessions.
 
-1. Download and extract the zip.
-2. Upload/replace the **contents of `dbsjp_revision_hub/`** in your existing GitHub repository. Keep `app.py` **at the repository root** alongside `requirements.txt`, `courses/` and `engine/`.
-3. In Streamlit Community Cloud set main file `app.py`. Commit changes; Streamlit automatically redeploys.
-4. No API key is required for Mathematics testing or self-assessed offline questions in the other subjects.
-
-### Optional Gemini (free tier, subject to eligibility and quotas)
-
-In Streamlit **App settings → Secrets**, set:
-
-```toml
-GEMINI_API_KEY = "your-key-here"
-GEMINI_MODEL = "gemini-2.5-flash-lite"
-```
-
-The selected model must be supported by your own free API allocation. If that model becomes unavailable, change the model setting. **No automatic paid API fallback is implemented**. No identifying user data are passed by the app in AI prompts, but student answers *are* sent for marking when enabled. Verify the AI provider's data practices, school rules, and child privacy/safeguarding requirements **before real student use**. Free API eligibility and quotas are not guaranteed.
-
-## Running locally
+## Run locally
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Run tests:
+## Publish via GitHub + Streamlit Community Cloud
+
+Unzip the archive, upload the **contents** of `dbsjp_revision_hub` to the root of your existing GitHub repo (or a new **private** repo). Point Streamlit to `app.py`. Keep the `.streamlit/config.toml` file and folder structure intact. No database or paid service is required.
+
+## Optional AI configuration
+
+For a developer-only demo with no student identifying information, add the following in Streamlit's **App settings → Secrets**:
+
+```toml
+GEMINI_API_KEY = "YOUR_KEY"
+GEMINI_MODEL = "gemini-2.5-flash-lite"
+```
+
+Do not commit any API keys to GitHub. Check the provider's current free quota and data-use terms before enabling requests with minor students. There is no automatic paid fallback or billing feature built into the application. AI can make mistakes: all AI marks are labelled indicative. Availability of a free tier or quota is not guaranteed by the app.
+
+## Test
+
+From the repository root:
 
 ```bash
 python -m pytest -q
 ```
 
-## Very important limitations
+Suggested manual checks:
 
-- **No real student registration, parental login, private database or multi-user isolation yet.** The site is for demonstration and testing with non-identifying dummy answers only. Current progress lives in Streamlit session state and is lost when the session ends unless exported. Do not use with personal or sensitive student information.
-- AI responses are fallible; the current generation engine performs structural checks, **not** independent examiner-level content verification. Mathematics has a much stronger deterministic path for four skills only.
-- Offline prompts outside those four Mathematics skills are **retrieval activities for self-checking**, not authentic past-paper questions, and are not marked automatically.
-- The subject list includes some booklet pathways that are not GCSEs, such as Islamic Education, and distinguishes BTEC from examined GCSE routes.
-- Official past-paper content is not copied or fed to AI by this app. Source links are general qualification directories where exact paper links have not yet been manually approved.
-- Administrator area is an information catalogue, **not** secured management. It cannot currently publish or approve questions.
-- Do not over-interpret progress statuses. Mathematically checked answers have a provisional status only with enough attempts; offline/AI practice is recorded but does not confer verified mastery.
-
-## Architecture
-
-- `app.py`: multi-subject Streamlit UI, revision, testing and progress.
-- `courses/catalog.py`: all school-booklet pathways and theme outlines, with provenance notes.
-- `courses/maths_4ma1.py`: Mathematics specification topics and 4 active skills.
-- `engine/questions.py`: deterministic original maths question templates.
-- `engine/marking.py`: mathematical final-answer marking.
-- `engine/offline.py`: free, general self-check prompts for all other subjects.
-- `engine/ai.py`: optional original question generation and indicative feedback.
-- `engine/progress.py`: original Mathematics progress helpers retained for compatibility.
-
-## Next milestones
-
-1. Validate all awarding body codes/specification versions and comprehensive topic trees with departments.
-2. Add thoroughly verified, topic-specific revision notes and curated resources.
-3. Expand high-quality deterministic Maths and Science templates.
-4. Add secure invitation-only login, linked parent accounts, row-level data protection and persistent private storage.
-5. Implement administrator approval workflows, moderated test cases, and stronger verification for AI generation.
+1. English Literature → Poetry → Unseen poetry → Revise. Confirm detailed guidance and an original worked example.
+2. Switch to Test myself, submit an answer and observe self-assessment guidance, second attempt and model answer.
+3. Mathematics → topic Quadratic equations → factorising → Test myself. Check that a correct final answer is recognised and a different question is available after completing.
+4. Select a topic without prepared notes. It must explicitly say it isn't yet available, not present generic instructions as revision.
+5. Check all links and the optional API against current provider terms before sharing with students.
