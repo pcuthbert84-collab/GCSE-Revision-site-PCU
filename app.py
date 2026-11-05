@@ -1,201 +1,297 @@
-"""DBSJP Revision Hub - Mathematics 4MA1 Higher Tier, initial prototype.
-Run: streamlit run app.py
+"""DBSJP Revision Hub: all school-booklet subject pathways, no paid services required.
+Run from repository root: streamlit run app.py
 """
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 import streamlit as st
-from courses.maths_4ma1 import COURSE, TOPICS, SKILLS, get_skill
+from courses.catalog import CATALOG, all_topics
+from courses.maths_4ma1 import SKILLS, get_skill
 from engine.questions import make_question
 from engine.marking import mark
-from engine.progress import make_attempt, summaries, next_difficulty
+from engine.ai import get_key,generate,feedback,AIUnavailable
+from engine.offline import question as offline_question
 
-st.set_page_config(page_title='DBSJP | Revision Hub',page_icon='📘',layout='wide')
-st.markdown('''<style>
-.block-container {max-width:1100px; padding-top:2rem}
-.muted {color:#64748b;font-size:.9rem}
-.brand {font-size:.9rem;letter-spacing:.09em;font-weight:700;color:#64748b}
-</style>''',unsafe_allow_html=True)
+st.set_page_config(page_title='DBSJP | Revision Hub',page_icon='📚',layout='wide')
+st.markdown('''<style>.block-container{max-width:1120px;padding-top:1.7rem}
+.small-muted{color:#667085;font-size:.86rem}.stApp h1{letter-spacing:-.025em}</style>''',unsafe_allow_html=True)
 
-STATE={'attempts':[], 'question':None,'stage':'new','first':None,'second':None,'difficulty':'Standard', 'recent':[], 'student_work':'', 'first_response':'', 'second_response':'','route':'Revise'}
-for k,v in STATE.items():
-    if k not in st.session_state: st.session_state[k]=v.copy() if isinstance(v,list) else v
+DEFAULTS={'records':[],'active_question':None,'stage':'new','first_answer':'','second_answer':'',
+          'first_result':None,'second_result':None,'last_context':None,'mode':'Revise','working':'',
+          'subject':'Mathematics','active_difficulty':'Standard'}
+for key,value in DEFAULTS.items():
+    if key not in st.session_state:st.session_state[key]=value.copy() if isinstance(value,list) else value
 
-def clear_question():
-    for k,v in [('question',None),('stage','new'),('first',None),('second',None),('student_work',''),('first_response',''),('second_response','')]:st.session_state[k]=v
+def reset_question():
+    for k in ['active_question','first_result','second_result','last_context']:
+        st.session_state[k]=None
+    for k in ['first_answer','second_answer','working']:
+        st.session_state[k]=''
+    st.session_state.stage='new'
 
-def new_question(skill_id, level):
-    for _ in range(20):
-        q=make_question(skill_id,level,seed=secrets.randbits(48))
-        if q['signature'] not in st.session_state['recent'][-12:]: break
-    st.session_state.recent.append(q['signature'])
-    st.session_state.question=q
-    st.session_state.stage='answer'
-    st.session_state.first_response=''
-    st.session_state.second_response=''
-    st.session_state.student_work=''
-    st.session_state.first=None
-    st.session_state.second=None
+def add_record(context,first,second,skipped):
+    rec={'date':datetime.now(timezone.utc).isoformat(timespec='seconds'), 'subject':context['subject'],
+         'area':context['area'],'topic':context['topic'],'skill':context.get('skill'),
+         'difficulty':context['difficulty'],'practice_type':context['kind'],
+         'first_result':first,'second_result':second,'skipped':skipped}
+    st.session_state.records.append(rec)
+    st.session_state.stage='complete'
 
-def finish(revealed=False):
-    q=st.session_state.question
-    if not q:return
-    a=make_attempt(q,st.session_state.first,st.session_state.second,revealed)
-    st.session_state.attempts.append(a)
-    st.session_state.difficulty=next_difficulty(q['difficulty'],a['first_correct'],a['second_correct'],a['revealed'])
-    st.session_state.stage='finished'
+def note_band(items):
+    if not items:return 'Not yet assessed'
+    reliable=[r for r in items if r['practice_type']=='maths-verified' and r.get('first_result') is not None]
+    if len(reliable)>=3:
+        rate=sum(float(r['first_result']) for r in reliable)/len(reliable)
+        if rate>=.8:
+            different_days=len({r.get('date','')[:10] for r in reliable})>=2
+            return 'Secure (provisional)' if len(reliable)>=5 and different_days else 'Working towards secure'
+        if rate>=.5:return 'Developing'
+        return 'Priority'
+    return 'Practice recorded · limited evidence'
 
-def revision_content(skill):
-    sid=skill['id']
+def intro():
+    st.title('DBSJP Revision Hub')
+    st.caption('School course catalogue · Revise · Test · Improve · Track progress')
+    c1,c2,c3=st.columns(3)
+    c1.metric('DBSJP pathways',len(CATALOG))
+    c2.metric('Booklet-level topics',all_topics())
+    c3.metric('Completed practice',len(st.session_state.records))
+    if not get_key():st.info('Free offline mode is active. Add an optional Gemini free-tier API key for AI-created questions and personalised feedback. No account or payment needed to use the offline activities.')
+    st.caption('This is a single-browser prototype. It does not yet have student accounts or private, persistent progress storage.')
+
+def practice_page():
+    st.subheader('Choose a subject')
+    chosen=st.selectbox('Subject',list(CATALOG),key='subject')
+    c=CATALOG[chosen]
+    label=f"{c['kind']}"+(f" · {c['board']}" if c.get('board') else '')+(f" · {c['code']}" if c.get('code') else '')
+    st.caption(label)
+    if not c['spec_verified']:
+        st.warning('Course themes below come from the DBSJP options booklet or a provisional teaching overview. The exact awarding-body specification has NOT yet been verified for this pathway. Practice is for learning, not authenticated exam-board past-paper practice.')
+    else:
+        st.success('Course identification confirmed. The detailed skill map for this qualification should still be checked before claiming full specification coverage.')
+    if c.get('note'):st.caption('Booklet note: '+c['note'])
+    area=st.selectbox('Choose an area',list(c['themes']),key=f'area_{chosen}')
+    topics_here=list(c['themes'][area])
+    if chosen=='Mathematics':
+        topics_here.sort(key=lambda t:(t not in ['Percentages','Ratio and proportion','Quadratic equations'],c['themes'][area].index(t)))
+    topic=st.selectbox('Choose a topic',topics_here,key=f'topic_{chosen}_{area}')
+    chosen_skill=None
+    if chosen=='Mathematics':
+        # The original interactive maths skills have precise methods and exact marking.
+        found=[s for group in SKILLS.values() for s in group if s['enabled'] and s['topic'].split(' ',1)[-1].lower()==topic.lower()]
+        if found:
+            chosen_skill=st.selectbox('Verified interactive skill',found,format_func=lambda s:s['name'])
+            st.caption('This skill uses the original deterministic SymPy-checked mathematics engine.')
+    mode=st.radio('What would you like to do?', ['Revise','Test myself'],horizontal=True,key='practice_mode')
+    context={'subject':chosen,'area':area,'topic':topic,'skill':chosen_skill['id'] if chosen_skill else None,'difficulty':st.session_state.active_difficulty,'kind':''}
+    if mode=='Revise':
+        st.markdown('### Revision: '+topic)
+        st.write('**Learning target:** Explain the key knowledge in this topic, apply it to an example and identify a common mistake.')
+        if chosen_skill:legacy_revision(chosen_skill['id'])
+        else:
+            st.markdown('**Use this structured revision routine:**')
+            st.markdown('1. Write down the key terms or techniques from your lesson notes.\n2. Explain the idea in your own words, then give a specific example.\n3. Check against your course textbook or teacher materials.\n4. Record one common error and how to avoid it.\n5. Test yourself using the button below.')
+            if chosen=='Combined Science':st.caption('For science, pay particular attention to key vocabulary, required practicals, calculations and explanations.')
+            elif 'BTEC' in chosen:st.caption('For BTEC, use practical assignments, evidence and applied scenarios. These are not automatically treated as written GCSE exam units.')
+            elif chosen in ('English Language','English Literature','History','Geography'):st.caption('Use evidence, explanation and subject-specific command words. Extended answers require carefully moderated marking.')
+        st.markdown('#### Sources and resources')
+        if chosen=='Mathematics':st.link_button('Pearson Maths A qualification','https://qualifications.pearson.com/en/qualifications/edexcel-international-gcses/international-gcse-mathematics-a-2016.html')
+        if chosen=='Combined Science':st.link_button('AQA Trilogy qualification','https://www.aqa.org.uk/subjects/science/gcse/science-8464')
+        st.link_button('BBC Bitesize GCSE revision','https://www.bbc.co.uk/bitesize/levels/z98jmp3')
+        st.caption('Bitesize is a general starting point, not a verified exact-course link for every topic. Approved topic-specific links are a planned editorial feature.')
+        if st.button('Test myself on this topic',type='primary'):
+            st.session_state.practice_mode='Test myself';st.rerun()
+    if mode=='Test myself':
+        st.divider()
+        st.markdown('### Test myself: '+topic)
+        test_ui(context,c,chosen_skill)
+
+def legacy_revision(sid):
     if sid=='quadratic_factorise':
-        st.markdown('### Factorising a quadratic')
-        st.write('For a quadratic of the form **x² + bx + c = 0**, look for two numbers that add to **b** and multiply to **c**.')
-        st.latex(r'x^2+5x+6=0\quad\Rightarrow\quad(x+2)(x+3)=0')
-        st.latex(r'x=-2\quad\text{or}\quad x=-3')
-        st.info('Common mistake: giving only one root. A quadratic equation can have two roots.')
+        st.write('To solve a monic quadratic by factorising, find two numbers that add to the coefficient of x and multiply to the constant.')
+        st.latex(r'x^2+5x+6=0\Rightarrow(x+2)(x+3)=0\Rightarrow x=-2\ \text{or}\ x=-3')
+        st.info('Remember both solutions.')
     elif sid=='quadratic_formula':
-        st.markdown('### The quadratic formula')
-        st.latex(r'ax^2+bx+c=0\quad\Rightarrow\quad x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}')
-        st.write('Identify **a**, **b** and **c**, substitute carefully, and evaluate both the + and − possibilities.')
-        st.info('Common mistake: forgetting brackets when b is negative, or forgetting the ±.')
+        st.latex(r'ax^2+bx+c=0\quad\Longrightarrow\quad x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}')
+        st.info('Identify a, b and c carefully; evaluate both signs.')
     elif sid=='percentage_change':
-        st.markdown('### Percentage increase and decrease')
-        st.write('Calculate the change, then add or subtract it from the original amount. Alternatively use a multiplier.')
-        st.latex(r'\text{New value}=\text{Original value}\times(1\pm\text{percentage}/100)')
-        st.info('Common mistake: treating a 20% decrease as multiply by 0.20, not 0.80.')
+        st.latex(r'\text{new amount}=\text{old amount}\times(1\pm\text{percent}/100)')
+        st.info('For a decrease, use a multiplier less than 1.')
     elif sid=='ratio_share':
-        st.markdown('### Sharing in a ratio')
-        st.write('Add the parts, divide the total by the number of parts, and multiply by each share.')
-        st.latex(r'\text{Share } 150 \text{ in the ratio } 2:3 \Rightarrow 60:90')
-        st.info('Common mistake: dividing by one part of the ratio instead of the total number of parts.')
-    st.markdown('#### Approved starting points')
-    st.link_button('Official Pearson qualification and specification',COURSE['specification_url'])
-    st.link_button('BBC Bitesize GCSE Maths', 'https://www.bbc.co.uk/bitesize/subjects/z38pycw')
-    st.caption('General resource links only in this prototype. Exact subtopic resources must be manually approved before wider release.')
+        st.write('Add the ratio parts, divide the total by the sum, then multiply by each part.')
+        st.latex(r'150\text{ in }2:3\quad\Rightarrow\quad 60:90')
 
-def test_view(skill):
-    st.subheader('Test myself')
-    st.write('One original question at a time. Try independently, then improve your answer after feedback.')
-    st.caption('Prototype marking checks the final answer exactly. It does not yet award exam-style method marks or grade written working.')
-    if st.session_state.question is not None and st.session_state.question['skill_id']!=skill['id']:
-        clear_question()
-    if st.session_state.question is None:
-        c1,c2=st.columns([1,2]);
-        with c1:st.selectbox('Starting difficulty',['Foundation','Standard','Challenge'],key='difficulty')
-        with c2:st.write('');st.write('');st.button('Generate a question',type='primary',on_click=new_question,args=(skill['id'],st.session_state.difficulty))
-        return
-    q=st.session_state.question
-    st.markdown(f"**{skill['topic']} · {skill['name']}**")
-    st.caption(f"{q['difficulty']} · {q['marks']} marks · Original exam-style question · {skill['spec_ref']}")
-    st.markdown(q['prompt'])
-    if st.session_state.stage=='answer':
-        st.text_area('Show your working (optional, not auto-marked yet)',key='student_work',height=120)
-        st.text_input('Final answer',key='first_response',placeholder='For two values enter e.g. -2, 3')
-        if st.button('Check my first answer',type='primary',disabled=not st.session_state.first_response.strip()):
-            st.session_state.first=mark(q,st.session_state.first_response,st.session_state.student_work)
-            st.session_state.stage='feedback';st.rerun()
-    elif st.session_state.stage=='feedback':
-        first=st.session_state.first
-        st.success(first['feedback']) if first['correct'] else st.warning(first['feedback'])
-        st.caption(first['method_note'])
-        if first['correct']:
-            if st.button('See solution and finish',type='primary'):
-                finish();st.rerun()
-        else:
-            with st.expander('A hint (without revealing the answer)'):
-                st.write(q['hint'])
-            st.text_area('Your improved working (optional)',key='student_work',height=100)
-            st.text_input('Second attempt: final answer',key='second_response')
-            left,right=st.columns(2)
-            with left:
-                if st.button('Check improved answer',type='primary',disabled=not st.session_state.second_response.strip()):
-                    st.session_state.second=mark(q,st.session_state.second_response,st.session_state.student_work)
-                    finish();st.rerun()
-            with right:
-                if st.button('Reveal solution and skip'):
-                    finish(revealed=True);st.rerun()
-    else:
-        if st.session_state.second:
-            (st.success if st.session_state.second['correct'] else st.warning)(st.session_state.second['feedback'])
-        elif st.session_state.first and st.session_state.first['correct']:
-            st.success('Correct independently.')
-        else:
-            st.info('Solution revealed. This does not count as independent mastery.')
-        st.markdown('#### Worked solution')
-        st.markdown(q['working'])
-        st.caption('Marking guide: '+ '; '.join(q['rubric']))
-        st.write('**Suggested next difficulty:**',st.session_state.difficulty)
-        if st.button('Next adaptive question',type='primary'):
-            new_question(skill['id'],st.session_state.difficulty);st.rerun()
+def next_level(level,result,skipped):
+    ordered=['Foundation','Standard','Challenge']; idx=ordered.index(level)
+    if skipped or result is None or result<.5:return ordered[max(0,idx-1)]
+    if result>=.9:return ordered[min(2,idx+1)]
+    return level
 
-def progress_view():
-    st.subheader('My progress')
-    st.caption('Progress is saved only in this browser session in V1. Use the JSON export to keep a copy before closing or redeploying.')
-    summary=summaries(st.session_state.attempts)
-    if not summary:st.info('No practice completed yet. Choose a supported skill and answer a question.');return
-    cols=st.columns(3)
-    cols[0].metric('Questions completed',len(st.session_state.attempts))
-    cols[1].metric('Skills practised',len(summary))
-    cols[2].metric('Independent accuracy',f"{100*sum(a['first_correct'] for a in st.session_state.attempts)/len(st.session_state.attempts):.0f}%")
-    for topic, skills in SKILLS.items():
-        attempted=[s for s in skills if s['id'] in summary]
-        if not attempted:continue
-        with st.expander(topic,expanded=True):
-            for skill in attempted:
-                s=summary[skill['id']]
-                st.markdown(f"**{skill['name']}** — {s['status']}")
-                st.progress(s['first_accuracy'],text=f"First-attempt accuracy: {100*s['first_accuracy']:.0f}% | Attempts: {s['attempts']} | Improved: {s['improved']} | Skipped: {s['skipped']}")
-    payload={'course':COURSE['code'],'exported_at':datetime.now().isoformat(timespec='seconds'),'attempts':st.session_state.attempts}
-    st.download_button('Download progress as JSON',json.dumps(payload,indent=2),file_name='dbsjp_maths_progress.json',mime='application/json')
-    uploaded=st.file_uploader('Restore a previously exported progress file',type=['json'])
-    if uploaded and st.button('Restore progress'):
+def make_new(context,c,skill):
+    difficulty=st.session_state.active_difficulty
+    context['difficulty']=difficulty
+    if skill is not None:
+        q=make_question(skill['id'],difficulty,seed=secrets.randbits(50))
+        kind='maths-verified'
+    elif get_key():
         try:
-            data=json.load(uploaded)
-            if data.get('course')!=COURSE['code'] or not isinstance(data.get('attempts'),list):raise ValueError('Invalid progress format')
-            cleaned=[]
-            for a in data['attempts'][:10000]:
-                if isinstance(a,dict) and get_skill(a.get('skill_id','')) and isinstance(a.get('first_correct'),bool) and isinstance(a.get('timestamp'),str):
-                    cleaned.append({k:a.get(k) for k in ('timestamp','skill_id','difficulty','max_mark','first_correct','second_correct','revealed','signature')})
-            st.session_state.attempts=cleaned
-            st.success(f'Restored {len(cleaned)} attempts.');st.rerun()
-        except (ValueError,TypeError,KeyError,UnicodeDecodeError,json.JSONDecodeError):st.error('Invalid progress export.')
-
-st.markdown('<div class="brand">DBSJP · GCSE REVISION HUB</div>',unsafe_allow_html=True)
-st.title('Mathematics Revision')
-st.caption('Pearson Edexcel International GCSE Mathematics A (4MA1) · Higher Tier · First prototype')
-with st.sidebar:
-    st.header('Navigate')
-    page=st.radio('Section',['Learn & test','My progress','Past papers','About this prototype'],label_visibility='collapsed')
-    st.divider()
-    st.caption('V1 • Free • No student accounts yet • No AI API charges')
-
-if page=='Learn & test':
-    area=st.selectbox('Choose an area',list(TOPICS))
-    topic=st.selectbox('Choose an official topic',TOPICS[area])
-    skills=SKILLS.get(topic,[])
-    available=[s for s in skills if s['enabled']]
-    if not available:
-        st.info('This topic is mapped for navigation. Interactive teaching and assessment will be enabled in a later stage.')
-        st.link_button('View official specification',COURSE['specification_url'])
+            q=generate(c,context['area'],context['topic'],difficulty=difficulty)
+            q['source']='ai';kind='ai'
+        except AIUnavailable as e:
+            st.warning(str(e));q=offline_question(c,context['area'],context['topic']);kind='offline'
     else:
-        options={s['name']:s for s in skills}
-        label=st.selectbox('Choose a specific skill',list(options))
-        skill=options[label]
-        if not skill['enabled']:
-            st.info('This subtopic is planned but is not assessed yet.')
+        q=offline_question(c,context['area'],context['topic']);kind='offline'
+    context['kind']=kind
+    st.session_state.active_question=q
+    st.session_state.last_context=context.copy()
+    st.session_state.stage='first'
+    st.session_state.first_answer='';st.session_state.second_answer='';st.session_state.working=''
+    st.session_state.first_result=None;st.session_state.second_result=None
+
+def score_answer(q,answer,kind):
+    if kind=='maths-verified':
+        graded=mark(q,answer,st.session_state.working)
+        return 1.0 if graded['correct'] else 0.0,graded['feedback']
+    if kind=='ai':
+        try:
+            resp=feedback(q,answer)
+            return resp['tentative_mark']/q['marks'],f"What went well: {resp.get('strengths','')}\n\nNext step: {resp.get('improvement','')}\n\nIndicative mark: {resp['tentative_mark']}/{q['marks']} (AI estimate, {resp.get('confidence','unknown')} confidence)."
+        except AIUnavailable as e:
+            return None,'Automated feedback was unavailable. '+str(e)+' Review your answer against the success criteria and try again.'
+    return None,'Use the success criteria below to reflect on your answer. This offline activity cannot give a reliable mark.'
+
+def test_ui(context,c,skill):
+    current=st.session_state.last_context
+    same=current and all(current.get(k)==context.get(k) for k in ('subject','area','topic','skill'))
+    if not same:reset_question()
+    q=st.session_state.active_question
+    if q is None:
+        st.selectbox('Starting difficulty',['Foundation','Standard','Challenge'],key='active_difficulty')
+        if skill is None:
+            st.caption('With a Gemini key: original AI questions with indicative marking. Without one: free retrieval prompts with self-assessment, not examiner marks.')
+        if st.button('Generate practice question',type='primary'):
+            make_new(context,c,skill);st.rerun()
+        return
+    kind=st.session_state.last_context['kind']
+    st.caption(('Exact-answer mathematics practice' if kind=='maths-verified' else 'AI original practice · indicative marking' if kind=='ai' else 'Offline practice · self-assessment')+' · '+st.session_state.last_context['difficulty'])
+    st.markdown(q['prompt'])
+    if st.session_state.stage=='first':
+        if kind=='maths-verified':
+            st.text_area('Show your working (not yet automatically awarded method marks)',key='working',height=100)
+            st.text_input('Final answer',key='first_answer',placeholder='Example: -2, 3')
+        else:st.text_area('Your answer',key='first_answer',height=175)
+        if st.button('Check my first answer',type='primary',disabled=not st.session_state.first_answer.strip()):
+            val,msg=score_answer(q,st.session_state.first_answer,kind)
+            st.session_state.first_result=val;st.session_state.feedback_text=msg;st.session_state.stage='feedback';st.rerun()
+    elif st.session_state.stage=='feedback':
+        st.info(st.session_state.feedback_text)
+        if kind=='offline':
+            st.markdown('**Self-check criteria:**')
+            for item in q['marking_points']:st.markdown('- '+item)
+            st.caption('This is formative practice. No automatic mark or mastery is claimed.')
+        with st.expander('Hint'):
+            st.write(q.get('hint','Review key terms and explain your reasoning.'))
+        if kind=='maths-verified' and st.session_state.first_result==1.0:
+            if st.button('View worked solution and finish',type='primary'):
+                add_record(st.session_state.last_context,st.session_state.first_result,None,False);st.rerun()
         else:
-            tab1,tab2=st.tabs(['📚 Revise','📝 Test myself'])
-            with tab1:revision_content(skill)
-            with tab2:test_view(skill)
-elif page=='My progress':progress_view()
-elif page=='Past papers':
-    st.subheader('Official past-paper practice')
-    st.write('Use Pearson’s official qualification page to find past papers and mark schemes for **4MA1 Higher Tier**, including **1H** and **2H** where publicly available.')
-    st.link_button('Open Pearson Mathematics A',COURSE['specification_url'])
-    st.warning('This prototype does not copy, scrape, or automatically mark genuine past-paper questions. Check copyright and licensing before adding such features.')
-elif page=='About this prototype':
-    st.subheader('What works in V1')
-    st.write('Specification-led navigation; four original question generators; exact-answer checking with SymPy; optional improvement attempt; adaptive difficulty; session-only progress; JSON export/import; official past-paper links.')
-    st.subheader('What is deliberately not included yet')
-    st.write('No automatic AI questions or AI feedback, persistent database, student or parent login, invitation system, method-mark grading, or approved topic-specific resource library. These require subsequent implementation and testing.')
-    st.info('Do not enter real student personal data. Nothing is currently sent to a model or external database.')
+            st.write('**Try improving your answer, or reveal the solution and move on.**')
+            if kind=='maths-verified':
+                st.text_input('Improved final answer',key='second_answer')
+            else:st.text_area('Improved answer',key='second_answer',height=140)
+            c1,c2=st.columns(2)
+            with c1:
+                if st.button('Submit improved answer',type='primary',disabled=not st.session_state.second_answer.strip()):
+                    val,msg=score_answer(q,st.session_state.second_answer,kind)
+                    st.session_state.second_result=val;st.session_state.second_feedback=msg
+                    add_record(st.session_state.last_context,st.session_state.first_result,val,False);st.rerun()
+            with c2:
+                if st.button('Reveal / skip'):
+                    add_record(st.session_state.last_context,st.session_state.first_result,None,True);st.rerun()
+    elif st.session_state.stage=='complete':
+        if st.session_state.second_result is not None:
+            st.info(st.session_state.get('second_feedback','Second attempt recorded.'))
+        st.markdown('#### Review')
+        if kind=='maths-verified':st.markdown(q['working'])
+        elif kind=='ai':st.write(q['model_answer']);st.markdown('**Marking criteria:**');st.write('; '.join(q['marking_points']))
+        else:
+            st.write('Compare your response with your teacher notes or textbook. Your own response has been recorded as practice, but not automatically graded.')
+            for point in q['marking_points']:st.markdown('- '+point)
+        last=st.session_state.records[-1]
+        st.session_state.active_difficulty=next_level(last['difficulty'],last['first_result'],last['skipped'])
+        st.caption('Next suggested difficulty: '+st.session_state.active_difficulty)
+        if st.button('Next question',type='primary'):
+            make_new(context,c,skill);st.rerun()
+
+def progress_page():
+    st.subheader('My progress')
+    st.warning('V2 prototype: progress exists only in this browser session. For multiple students we must add authenticated accounts and private database storage before deployment.')
+    rows=st.session_state.records
+    if not rows:st.info('No questions attempted yet. Visit Revise & Test to begin.');return
+    c1,c2,c3=st.columns(3)
+    c1.metric('Activities completed',len(rows));c2.metric('Subjects attempted',len({r['subject'] for r in rows}));c3.metric('Skipped',sum(r['skipped'] for r in rows))
+    for subject in sorted({r['subject'] for r in rows}):
+        items=[r for r in rows if r['subject']==subject]
+        with st.expander(f'{subject} · {note_band(items)}',expanded=True):
+            st.write(f'{len(items)} activities recorded')
+            for area in sorted({r['area'] for r in items}):
+                st.markdown('**'+area+'**')
+                for topic in sorted({r['topic'] for r in items if r['area']==area}):
+                    subset=[r for r in items if r['area']==area and r['topic']==topic]
+                    st.write(f"{topic}: {note_band(subset)} · {len(subset)} attempts · {sum(r['skipped'] for r in subset)} skips")
+    data={'version':2,'exported_at':datetime.now(timezone.utc).isoformat(),'records':rows}
+    st.download_button('Export progress (JSON)',json.dumps(data,indent=2),file_name='dbsjp_progress.json',mime='application/json')
+    upload=st.file_uploader('Restore previous export',type=['json'])
+    if upload and st.button('Restore saved progress'):
+        try:
+            content=json.load(upload)
+            records=content.get('records')
+            if not isinstance(records,list) or len(records)>20000:raise ValueError()
+            cleaned=[]
+            for item in records:
+                if not isinstance(item,dict) or item.get('subject') not in CATALOG or not isinstance(item.get('topic'),str):raise ValueError()
+                cleaned.append({k:item.get(k) for k in ('date','subject','area','topic','skill','difficulty','practice_type','first_result','second_result','skipped')})
+            st.session_state.records=cleaned;st.success(f'Restored {len(cleaned)} activities.');st.rerun()
+        except Exception:st.error('Invalid or unsupported export file.')
+
+def papers_page():
+    st.subheader('Genuine past papers')
+    st.write('These are **external official publisher links**, not copies of examination papers or mark schemes.')
+    st.link_button('Pearson Edexcel qualifications','https://qualifications.pearson.com/en/qualifications.html')
+    st.link_button('AQA qualifications','https://www.aqa.org.uk/subjects')
+    st.link_button('OCR qualifications','https://www.ocr.org.uk/qualifications/')
+    st.caption('Choose the exact school qualification and paper on the awarding body’s website. Not all course codes have been verified; this prototype does not scrape or automatically mark copyrighted past-paper questions.')
+
+def admin_page():
+    st.subheader('Course catalogue & quality checks')
+    st.warning('Administrator login and approval workflow are NOT implemented yet. This page is publicly visible in the current prototype; do not upload private student or school data.')
+    for name,c in CATALOG.items():
+        with st.expander(name):
+            st.write(f"Qualification: {c['kind']} | Board: {c.get('board') or 'To verify'} | Code: {c.get('code') or 'To verify'}")
+            st.write('Source status: '+('Verified qualification identifier / configured topic structure' if c['spec_verified'] else 'Booklet themes / provisional, official specification mapping required'))
+            st.write(f"{sum(len(v) for v in c['themes'].values())} listed themes")
+            if c.get('note'):st.caption(c['note'])
+    st.markdown('#### Before a school-wide launch')
+    st.write('Confirm board, specification number and exam series for every course; obtain appropriate data-protection and safeguarding approval; add secure identity and row-level access controls; validate AI data terms; approve topic-level source links and representative assessment samples.')
+
+def about_page():
+    st.subheader('About this build')
+    st.write('This expands the original Mathematics prototype into a 28-pathway DBSJP revision catalogue, based on the 2026–27 school options booklet. It is not yet a fully populated or independently validated official-specification library for every course.')
+    st.write('Mathematics has four deterministic, automatically marked question skills. Other pathways offer free retrieval-practice prompts and optional original AI questions when a Gemini API key is configured. AI feedback is indicative, not an examination-board mark.')
+    st.write('No generated questions are stored in a permanent bank. The active question is held temporarily in Streamlit session state, with compact progress data recorded in that session.')
+    st.warning('Do not use with identifiable student data until secure accounts, privacy review and a suitable AI data-processing arrangement are completed.')
+
+with st.sidebar:
+    st.markdown('### 📚 DBSJP Revision Hub')
+    page=st.radio('Navigate',['Revise & Test','Home','My progress','Past papers','Course catalogue','About'],label_visibility='collapsed')
+    st.divider();st.caption('V2 · Multi-subject prototype · Free offline mode')
+
+if page=='Home':
+    intro()
+    st.markdown('### Start here')
+    st.info('Use **Revise & Test** in the left navigation to start. Working Mathematics question types are available; other subjects support free self-check practice, plus optional AI feedback.')
+elif page=='Revise & Test':practice_page()
+elif page=='My progress':progress_page()
+elif page=='Past papers':papers_page()
+elif page=='Course catalogue':admin_page()
+else:about_page()

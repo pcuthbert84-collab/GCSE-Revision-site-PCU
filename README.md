@@ -1,55 +1,76 @@
-# DBSJP Revision Hub — Mathematics Prototype (V1)
+# DBSJP Revision Hub — Multi-subject prototype V2
 
-**Course:** Pearson Edexcel International GCSE Mathematics A, 4MA1, **Higher Tier** (linear papers 1H and 2H).
+A free-to-run Streamlit revision prototype based on the **DBSJP Key Stage 4 Options Booklet 2026–27**.
 
-This is a free-first working prototype, not a finished school deployment. No API key is needed.
+## What's included
 
-## What works
+- 28 DBSJP GCSE, IGCSE, BTEC and school-curriculum pathways, with 250+ selectable *booklet-level* themes.
+- Subject → area → topic → **Revise** or **Test myself**.
+- Mathematics: confirmed Pearson Edexcel International GCSE Mathematics A **4MA1 Higher Tier**, including four working parameterised maths skills with exact-answer SymPy marking, hints, optional second attempt and worked solution.
+- Other subjects: original, free, **self-assessed** retrieval practice prompts for every listed theme. No false claims of automatic grades without an AI key.
+- Optional Gemini API integration to write **original** questions and provide **indicative** feedback. No paid account is necessary to run offline practice.
+- Adaptive difficulty suggestions, topic-level progress, second-attempt/skipped tracking, JSON export/import.
+- Official exam-board past-paper *links*, not scraped or reproduced paper contents.
+- Simple course catalogue and clear verification warnings.
 
-- Navigate all six course areas and their topic headings; four specific skills are active: quadratic factorisation, quadratic formula, percentage change, and ratio sharing.
-- Review short original teaching summaries and worked examples.
-- Generate fresh *original* parameterised maths questions.
-- Enter working separately and final numerical answers; exact answers checked using SymPy.
-- Receive feedback, try again (optional), reveal a worked solution, and adapt the next question's difficulty.
-- View progress by topic/skill, with an expanded detail view; export and restore JSON progress.
-- Open the Pearson qualification page for verified past-paper routes.
+**IMPORTANT:** This is a substantial **framework with broad coverage**, not a claim that all 28 awarding-body specifications, thousands of exact syllabus points, videos and exam-style marking rubrics are already authenticated. Most non-Mathematics topics come from the school booklet or a provisional teaching overview. Course codes and topic-level links must be verified before claiming exact exam-board alignment. In particular, BTEC options may depend on the school's chosen units. See `courses/catalog.py`.
 
-**Important limitation:** Current marking tests whether the **final numerical answer** is correct. It does **not** yet assign method marks, or reliably mark mathematical working. Correct final answers receive a provisional full-answer score only, and should not be interpreted as an official Pearson mark. It does not use AI yet. The wording "AI" is intentionally absent from the active question screens.
+## Deploy to existing Streamlit app
 
-**Progress is session-only.** Closing/restarting the server, deployment, browser session loss, or memory recycling may erase it; download a JSON copy before leaving. This is not a multi-user app and does not have secure authentication. Do not enter personally identifying student information.
+1. Download and extract the zip.
+2. Upload/replace the **contents of `dbsjp_revision_hub/`** in your existing GitHub repository. Keep `app.py` **at the repository root** alongside `requirements.txt`, `courses/` and `engine/`.
+3. In Streamlit Community Cloud set main file `app.py`. Commit changes; Streamlit automatically redeploys.
+4. No API key is required for Mathematics testing or self-assessed offline questions in the other subjects.
 
-## Run locally
+### Optional Gemini (free tier, subject to eligibility and quotas)
 
-1. Install Python 3.11+.
-2. In this folder, run:
+In Streamlit **App settings → Secrets**, set:
+
+```toml
+GEMINI_API_KEY = "your-key-here"
+GEMINI_MODEL = "gemini-2.5-flash-lite"
+```
+
+The selected model must be supported by your own free API allocation. If that model becomes unavailable, change the model setting. **No automatic paid API fallback is implemented**. No identifying user data are passed by the app in AI prompts, but student answers *are* sent for marking when enabled. Verify the AI provider's data practices, school rules, and child privacy/safeguarding requirements **before real student use**. Free API eligibility and quotas are not guaranteed.
+
+## Running locally
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Deploy for £0 with Streamlit Community Cloud
+Run tests:
 
-1. Create a **private** repository on GitHub and upload the files in this folder (preserve the structure).
-2. Visit https://share.streamlit.io and sign in with GitHub.
-3. Create an app from the repository; main file: `app.py`.
-4. Select Python 3.12 or another supported version and deploy.
-5. Keep the app **private/invite-restricted** if you will share it. The prototype itself has **no student login or privacy guarantees**.
+```bash
+python -m pytest -q
+```
 
-Streamlit Community Cloud may require additional permissions to deploy a private repository. Do not put keys or student personal data in the repository.
+## Very important limitations
 
-## Design roadmap (not yet implemented)
+- **No real student registration, parental login, private database or multi-user isolation yet.** The site is for demonstration and testing with non-identifying dummy answers only. Current progress lives in Streamlit session state and is lost when the session ends unless exported. Do not use with personal or sensitive student information.
+- AI responses are fallible; the current generation engine performs structural checks, **not** independent examiner-level content verification. Mathematics has a much stronger deterministic path for four skills only.
+- Offline prompts outside those four Mathematics skills are **retrieval activities for self-checking**, not authentic past-paper questions, and are not marked automatically.
+- The subject list includes some booklet pathways that are not GCSEs, such as Islamic Education, and distinguishes BTEC from examined GCSE routes.
+- Official past-paper content is not copied or fed to AI by this app. Source links are general qualification directories where exact paper links have not yet been manually approved.
+- Administrator area is an information catalogue, **not** secured management. It cannot currently publish or approve questions.
+- Do not over-interpret progress statuses. Mathematically checked answers have a provisional status only with enough attempts; offline/AI practice is recorded but does not confer verified mastery.
 
-1. Manually reviewed complete skill map, official content sources, revision materials and resources.
-2. Optional pluggable free-tier AI generation/feedback service, non-identifying prompts, strict specification mapping, mathematical validation, free-quota fail-closed controls. Privacy review required before processing children's answers.
-3. SymPy method checks for supported algebra, more sophisticated marking rubrics and review of errors.
-4. Invitation-only registration, role-based student/parent/admin permissions and persistent progress using an appropriately secured hosted database. Never rely solely on hiding Streamlit pages for access control.
-5. Official past-paper mode with source links, not unauthorised reproduction of Pearson questions.
-6. Additional subjects.
+## Architecture
 
-## Sources
+- `app.py`: multi-subject Streamlit UI, revision, testing and progress.
+- `courses/catalog.py`: all school-booklet pathways and theme outlines, with provenance notes.
+- `courses/maths_4ma1.py`: Mathematics specification topics and 4 active skills.
+- `engine/questions.py`: deterministic original maths question templates.
+- `engine/marking.py`: mathematical final-answer marking.
+- `engine/offline.py`: free, general self-check prompts for all other subjects.
+- `engine/ai.py`: optional original question generation and indicative feedback.
+- `engine/progress.py`: original Mathematics progress helpers retained for compatibility.
 
-- [Pearson official Mathematics A qualification page](https://qualifications.pearson.com/en/qualifications/edexcel-international-gcses/international-gcse-mathematics-a-2016.html)
-- DBSJP Key Stage 4 Options Booklet 2026–2027 (user supplied).
+## Next milestones
 
-Course headings are for navigation and require detailed teacher verification before wider rollout. Original questions are not asserted to be official past-paper questions.
+1. Validate all awarding body codes/specification versions and comprehensive topic trees with departments.
+2. Add thoroughly verified, topic-specific revision notes and curated resources.
+3. Expand high-quality deterministic Maths and Science templates.
+4. Add secure invitation-only login, linked parent accounts, row-level data protection and persistent private storage.
+5. Implement administrator approval workflows, moderated test cases, and stronger verification for AI generation.
