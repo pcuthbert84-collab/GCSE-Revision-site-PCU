@@ -21,24 +21,109 @@ def get_model():
     except Exception:
         return os.getenv('GEMINI_MODEL','gemini-2.5-flash-lite')
 
-def request_json(instruction, payload):
+def _safe_api_message(status, raw):
+    """Classify an upstream error without publishing credentials or user content."""
+    try:
+        doc=json.loads(raw)
+        error=doc.get('error',{})
+        code=error.get('status','')
+    except (ValueError,TypeError,AttributeError):
+        code=''
+    guidance={
+        400:'Invalid request. Check that the model supports structured JSON output.',
+        401:'Authentication failed. Check the API key in Streamlit Secrets.',
+        403:'Access denied. Check API key restrictions and Gemini API permissions.',
+        404:'Model not found for this API key or API version. Run the model-list test below.',
+        429:'Free-tier quota or rate limit reached. Check Google AI Studio usage.',
+        500:'Gemini server error. Try again later.',
+        502:'Gemini server error. Try again later.',
+        503:'Gemini service temporarily unavailable. Try again later.',
+        504:'Gemini request timed out. Try again later.',
+    }
+    return f'Gemini HTTP {status} ({code or "API error"}): '+guidance.get(status,'Request failed; check the Google AI Studio project and model.')
+
+
+def _request(body, model, timeout=42):
     key=get_key()
     if not key:
-        raise AIUnavailable('No Gemini API key configured. The free offline activity is available instead.')
-    model=get_model()
+        raise AIUnavailable('No Gemini API key configured in Streamlit Secrets.')
     url=f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
-    body={'contents':[{'role':'user','parts':[{'text': instruction+'\nINPUT:\n'+json.dumps(payload,ensure_ascii=False)}]}],
-          'generationConfig':{'temperature':0.35,'responseMimeType':'application/json'}}
-    req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST')
+    req=urllib.request.Request(url,data=json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST')
     try:
-        with urllib.request.urlopen(req,timeout=32) as resp:
-            data=json.load(resp)
-        s=data['candidates'][0]['content']['parts'][0]['text']
-        result=json.loads(s)
-        if not isinstance(result,dict): raise ValueError('Expected object')
-        return result
-    except (urllib.error.HTTPError,urllib.error.URLError,TimeoutError,ValueError,KeyError,IndexError) as e:
-        raise AIUnavailable('AI could not return a valid response. You can continue with free offline practice.') from e
+        with urllib.request.urlopen(req,timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        raw=e.read(4000).decode('utf-8','replace')
+        raise AIUnavailable(_safe_api_message(e.code,raw)) from e
+    except urllib.error.URLError as e:
+        raise AIUnavailable('Unable to reach Gemini. Check network connectivity or API service availability.') from e
+    except TimeoutError as e:
+        raise AIUnavailable('Gemini timed out. Try a shorter question or try again.') from e
+    except (ValueError,UnicodeError) as e:
+        raise AIUnavailable('Gemini returned invalid HTTP JSON.') from e
+
+
+def _extract_text(data):
+    try:
+        candidate=data['candidates'][0]
+        chunks=[part.get('text','') for part in candidate.get('content',{}).get('parts',[]) if isinstance(part,dict)]
+        combined='\n'.join(chunks).strip()
+        if not combined:
+            reason=candidate.get('finishReason','unknown')
+            raise AIUnavailable(f'Gemini provided no text (finish reason: {reason}).')
+        return combined
+    except (KeyError,IndexError,TypeError) as e:
+        raise AIUnavailable('Gemini returned no usable candidate; check its safety and output settings.') from e
+
+
+def request_json(instruction, payload):
+    model=get_model().strip()
+    body={'contents':[{'role':'user','parts':[{'text':instruction+'\nINPUT:\n'+json.dumps(payload,ensure_ascii=False)}]}],
+          'generationConfig':{'temperature':0.25,'responseMimeType':'application/json','maxOutputTokens':4096}}
+    data=_request(body,model)
+    raw=_extract_text(data)
+    try:
+        parsed=json.loads(raw)
+        if isinstance(parsed,dict):return parsed
+    except (ValueError,TypeError):
+        pass
+    raise AIUnavailable('Gemini answered, but its content was not valid JSON. Try again; model connection works.')
+
+
+def connection_test():
+    """Call the configured model with a tiny structured-output test; do not reveal the key."""
+    model=get_model().strip()
+    body={'contents':[{'parts':[{'text':'Return exactly this JSON object: {"status":"ok"}'}]}],
+          'generationConfig':{'temperature':0,'responseMimeType':'application/json','maxOutputTokens':128}}
+    result=_request(body,model,timeout=20)
+    raw=_extract_text(result)
+    try:
+        content=json.loads(raw)
+    except ValueError as e:
+        raise AIUnavailable('Connection succeeded, but Gemini did not return JSON. Check the model response mode.') from e
+    if content.get('status')!='ok':
+        raise AIUnavailable('Connection succeeded but the JSON test answer was unexpected.')
+    return f'Connected successfully to {model}. JSON output is working.'
+
+
+def list_available_models():
+    """Check whether this API key can see its requested Gemini model."""
+    key=get_key()
+    if not key:raise AIUnavailable('No Gemini API key configured.')
+    req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100',headers={'x-goog-api-key':key})
+    try:
+        with urllib.request.urlopen(req,timeout=18) as resp:data=json.load(resp)
+    except urllib.error.HTTPError as e:
+        raise AIUnavailable(_safe_api_message(e.code,e.read(4000).decode('utf-8','replace'))) from e
+    except (urllib.error.URLError,TimeoutError) as e:
+        raise AIUnavailable('Could not connect to model catalogue.') from e
+    target=get_model().strip().removeprefix('models/')
+    matches=[m for m in data.get('models',[]) if m.get('name','').removeprefix('models/')==target]
+    if matches:
+        methods=matches[0].get('supportedGenerationMethods',[])
+        return f'Model {target} is visible to this key. generateContent supported: {"generateContent" in methods}.'
+    alternatives=[m['name'].removeprefix('models/') for m in data.get('models',[]) if 'generateContent' in m.get('supportedGenerationMethods',[]) and 'flash' in m.get('name','')]
+    return f'Model {target} was NOT listed for this key. Available Flash models (first 8): '+', '.join(alternatives[:8])
 
 GENERATION_RULES="""You are an academically cautious UK school revision question writer.
 Return one JSON object with exactly fields: prompt (plain student-facing question), hint (non-answer-leaking short hint),

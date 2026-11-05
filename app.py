@@ -10,7 +10,7 @@ from courses.revision_content import get_content
 from courses.maths_4ma1 import SKILLS
 from engine.questions import make_question
 from engine.marking import mark
-from engine.ai import get_key, AIUnavailable
+from engine.ai import get_key, get_model, connection_test, list_available_models, AIUnavailable
 from engine.v4_ai import create_study,create_question,evaluate
 
 st.set_page_config(page_title='DBSJP Revision Hub | V4',page_icon='📚',layout='wide')
@@ -256,12 +256,31 @@ def testing(course,area,topic,tier):
 def main():
     with st.sidebar:
         st.title('📚 DBSJP Revision Hub')
-        page=st.radio('Navigation',['Revise & Test','Official past papers','Testing issues','How this prototype works'])
+        page=st.radio('Navigation',['Revise & Test','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
         st.caption('V4 • Content-first • Level 2 only')
         st.caption('No accounts or stored progress')
-        st.caption(('Gemini connected' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
+        st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
+    if page=='AI connection test':
+        st.title('Gemini connection diagnostics')
+        st.write('This test uses your configured key without displaying it. It makes one small Gemini request and may count towards your free quota.')
+        st.info('Configured model: '+get_model())
+        if not get_key():
+            st.error('GEMINI_API_KEY is missing from Streamlit Secrets.')
+        else:
+            if st.button('1. Check model availability'):
+                try:
+                    with st.spinner('Checking Google model catalogue…'):
+                        st.success(list_available_models())
+                except AIUnavailable as ex:st.error(str(ex))
+            if st.button('2. Test model and JSON response'):
+                try:
+                    with st.spinner('Making a small structured-output request…'):
+                        st.success(connection_test())
+                except AIUnavailable as ex:st.error(str(ex))
+        st.caption('You can share the status message, HTTP code and model name. Never share your API key, Secrets screenshot or full request logs.')
+        return
     if page=='Testing issues':
         st.title('Content and marking issues')
         st.write('Review the issues flagged during this browser session. These are not uploaded anywhere or saved to a database.')

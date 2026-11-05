@@ -56,3 +56,7 @@ python -m pytest -q
 6. BTEC → try a skill-practice question. The generator must not pretend the task is an actual internally assessed assignment.
 7. Switch subjects while a question is in progress; the old question should reset.
 8. Remove the Gemini key locally; check that fallback messages are clear.
+
+### Diagnosing Gemini integration
+
+Version 4.1 adds **AI connection test** in the Streamlit sidebar. Use **Check model availability** to confirm the configured model appears for the API project, then **Test model and JSON response** to make one small generation call. These tests consume a small amount of free API quota. Error messages now show a safe HTTP status and category without exposing the API key or the submitted content. Do not publish Streamlit Secrets. If model-list succeeds but JSON test fails, inspect the displayed HTTP code; 429 usually indicates quota, 404 model availability and 403 access restrictions.
