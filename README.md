@@ -1,4 +1,4 @@
-# DBSJP Revision Hub — V4 (content-first testing prototype)
+# DBSJP Revision Hub — V4.2 (content-first testing prototype)
 
 ## What's in V4
 
@@ -60,3 +60,11 @@ python -m pytest -q
 ### Diagnosing Gemini integration
 
 Version 4.1 adds **AI connection test** in the Streamlit sidebar. Use **Check model availability** to confirm the configured model appears for the API project, then **Test model and JSON response** to make one small generation call. These tests consume a small amount of free API quota. Error messages now show a safe HTTP status and category without exposing the API key or the submitted content. Do not publish Streamlit Secrets. If model-list succeeds but JSON test fails, inspect the displayed HTTP code; 429 usually indicates quota, 404 model availability and 403 access restrictions.
+
+
+### V4.2: Longer revision-guide generation fix
+
+- Prior V4/V4.1 used the same small error message for large-output issues and could reject valid responses when extra prose, code fences or fields were missing. V4.2 uses concise, explicit revision-guide schema instructions, larger output room, a robust JSON-object parser and safe messages naming which section failed.
+- HTTP 500, 502, 503, 504 and timeouts are retried once (a short pause); 429 quota responses are **not retried**. Each network request may count against the shared free-tier quota.
+- **AI connection test → 3. Test complete revision guide** exercises the actual revision generation, not just a tiny `{status: ok}` JSON call. Keep the Gemini Secrets key unchanged if the small test succeeds.
+- Long content can still fail due to model capacity or truncation. No errors are silently converted to marks or invented revision facts.

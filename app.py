@@ -13,7 +13,7 @@ from engine.marking import mark
 from engine.ai import get_key, get_model, connection_test, list_available_models, AIUnavailable
 from engine.v4_ai import create_study,create_question,evaluate
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.2',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
@@ -258,7 +258,7 @@ def main():
         st.title('📚 DBSJP Revision Hub')
         page=st.radio('Navigation',['Revise & Test','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4 • Content-first • Level 2 only')
+        st.caption('V4.2 • Content-first • Level 2 only')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
@@ -279,6 +279,20 @@ def main():
                     with st.spinner('Making a small structured-output request…'):
                         st.success(connection_test())
                 except AIUnavailable as ex:st.error(str(ex))
+            st.divider()
+            st.write('**3. Test a real revision-guide response**')
+            st.caption('This tests the same generation and validation used by Revise, on a small, original BTEC Business topic. It uses your AI quota. No API key or student information is displayed.')
+            if st.button('3. Test complete revision guide'):
+                try:
+                    demo_course={'name':'BTEC Business Level 2','kind':'BTEC','board':'Pearson','code':'HBGY2'}
+                    demo_topic={'title':'Teams and team-leading','source':'Team roles, leadership approaches, motivation and communication in businesses.'}
+                    with st.spinner('Checking complete study-guide generation…'):
+                        guide=with_ai(create_study,demo_course,demo_topic,'Business skills','Not tiered')
+                    st.success('A complete topic-specific revision guide was generated and passed structural validation.')
+                    render_notes(guide)
+                except AIUnavailable as ex:
+                    st.error('Revision guide generation failed: '+str(ex))
+                    st.info('The small JSON test can pass while larger study-guide requests fail. This message identifies which stage failed.')
         st.caption('You can share the status message, HTTP code and model name. Never share your API key, Secrets screenshot or full request logs.')
         return
     if page=='Testing issues':

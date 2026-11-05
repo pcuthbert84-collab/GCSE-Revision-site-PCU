@@ -3,6 +3,7 @@ import json
 import os
 import urllib.request
 import urllib.error
+import time
 
 class AIUnavailable(Exception):
     pass
@@ -76,18 +77,53 @@ def _extract_text(data):
         raise AIUnavailable('Gemini returned no usable candidate; check its safety and output settings.') from e
 
 
-def request_json(instruction, payload):
+def _parse_json_object(raw):
+    """Accept proper JSON, or a JSON object surrounded by accidental markdown fences.
+
+    Never use eval or try to invent missing values.
+    """
+    raw=raw.strip()
+    try:
+        obj=json.loads(raw)
+    except (TypeError,ValueError):
+        # Some models include a fenced object despite the JSON response MIME type.
+        import re
+        raw=re.sub(r'^```(?:json)?\s*', '', raw, flags=re.IGNORECASE)
+        raw=re.sub(r'\s*```$', '', raw)
+        try:
+            obj=json.loads(raw)
+        except (TypeError,ValueError) as e:
+            raise AIUnavailable('Gemini returned invalid or truncated JSON. The generated guide was not displayed. Please retry.') from e
+    if not isinstance(obj,dict):
+        raise AIUnavailable('Gemini returned a JSON value instead of a guide object. Please retry.')
+    return obj
+
+
+def request_json(instruction, payload, max_output_tokens=8192):
+    """Structured response with limited retry on transient infrastructure failures.
+
+    Larger study guides sometimes exceed the prior 4096-token response limit.
+    The quota is never bypassed and failures cannot silently trigger paid calls.
+    """
     model=get_model().strip()
     body={'contents':[{'role':'user','parts':[{'text':instruction+'\nINPUT:\n'+json.dumps(payload,ensure_ascii=False)}]}],
-          'generationConfig':{'temperature':0.25,'responseMimeType':'application/json','maxOutputTokens':4096}}
-    data=_request(body,model)
-    raw=_extract_text(data)
-    try:
-        parsed=json.loads(raw)
-        if isinstance(parsed,dict):return parsed
-    except (ValueError,TypeError):
-        pass
-    raise AIUnavailable('Gemini answered, but its content was not valid JSON. Try again; model connection works.')
+          'generationConfig':{'temperature':0.2,'responseMimeType':'application/json',
+                              'maxOutputTokens':max_output_tokens}}
+    for attempt in range(2):
+        try:
+            data=_request(body,model,timeout=65)
+            candidate=(data.get('candidates') or [{}])[0]
+            finish=candidate.get('finishReason','')
+            if finish=='MAX_TOKENS':
+                raise AIUnavailable('Gemini stopped early because the revision response was too long (MAX_TOKENS). Try a smaller topic or the compact-guide option.')
+            raw=_extract_text(data)
+            return _parse_json_object(raw)
+        except AIUnavailable as exc:
+            if attempt==0 and any(label in str(exc) for label in ('HTTP 500','HTTP 502','HTTP 503','HTTP 504','timed out')):
+                time.sleep(1.5)
+                continue
+            raise
+    raise AIUnavailable('Gemini could not complete this request.')
 
 
 def connection_test():

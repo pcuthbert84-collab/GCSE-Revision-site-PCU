@@ -18,11 +18,31 @@ STUDY_RULES='''You are preparing school revision notes, not quoting an awarding 
 QUESTION_RULES='''Write ONE original high-quality GCSE/Level-2 practice item for the specific subject, topic, tier and difficulty. Do not copy or paraphrase a published past-paper question. The task must be self-contained, with all necessary numerical data, source extracts (original only), units and assumptions. Avoid dependence on unseen images, poetry, literature quotations, websites, plays, fieldwork reports or unseen primary sources. Prefer an authentic subject task to generic recall. For maths and science, independently verify computations and show a correct worked solution. For history or geography where factual detail may be uncertain, pose precise skills-based tasks rather than invent facts. Marking points must be distinct and add up to max_marks, with each having credit (integer) and criterion (string). A valid alternative approach earns equivalent credit; method marks should not require the exact example. For writing/creative subjects, provide transparent AO-like criteria but do not promise official-grade equivalence. For coursework BTEC, use a standalone skill exercise, not an actual assignment. Answer must NOT appear in the question stem or hint. Return JSON ONLY: {prompt:string, question_type:string, hint:string, model_answer:string, max_marks:integer 2..8, marking_points:[{criterion:string,credit:integer}], reference_method:string, uncertainty:string}. Student response may be multiple lines of working.''' 
 FEEDBACK_RULES='''You are providing formative, provisional practice feedback, not official examiner assessment. Review the ORIGINAL question, rubric, and the learner's complete answer including any calculations. Accept mathematically equivalent answers, exact fractions, reordered roots, and any sound alternative method. Never insist student work matches the exemplar. Check whether final answers and steps are valid. Do not infer missing reasoning. Award supported partial marks only where evidence exists, but if uncertain flag needs_review rather than penalising. Explain a specific strength and an actionable clue WITHOUT revealing complete model answer at first feedback. Do not say incorrect merely because you cannot parse the format. Return JSON ONLY: {indicative_mark:integer, strength:string, next_step:string, correct_independently:boolean, needs_review:boolean, confidence:string (low/medium/high), reason:string}. Ensure 0<=mark<=maximum.'''
 
+COMPACT_STUDY_RULES='''Produce a concise but substantive original Year 10/11 revision lesson on this exact school topic. No generic study tips or invented course requirements. Respond with a single JSON object using EXACTLY these keys: title (string), outcomes (array with 2 short items), explanation (string, 90-170 words with subject-specific explanation), key_points (array of 4 detailed facts/techniques), worked_example (string, one accurate concrete example with steps), pitfalls (array of 2 concrete misconceptions), quick_check (array of 2 objects each with question and answer strings), uncertainty (string, empty if none). Make responses compact. Never reproduce exam-board questions or invent quotations.'''
+
+def _study_validation(r):
+    if not isinstance(r,dict):return 'Gemini returned an invalid study-guide structure.'
+    text_fields=('title','explanation','worked_example')
+    missing=[k for k in text_fields if not isinstance(r.get(k),str) or not r[k].strip()]
+    list_fields=('outcomes','key_points','pitfalls','quick_check')
+    missing += [k for k in list_fields if not isinstance(r.get(k),list) or len(r[k])<2]
+    if missing:
+        return 'Gemini guide is missing required sections: '+', '.join(missing)+'.'
+    if not all(isinstance(x,dict) and isinstance(x.get('question'),str) and isinstance(x.get('answer'),str) for x in r['quick_check']):
+        return 'Gemini quick-check questions were malformed.'
+    if len(r['explanation'])<100:return 'Gemini explanation was too short to teach this topic.'
+    return None
+
 def create_study(course,topic,area,tier='Higher',difficulty='Standard'):
-    r=request_json(STUDY_RULES,_payload(course,topic,area,tier,difficulty))
-    if not all(isinstance(r.get(k),str) for k in ['title','explanation','worked_example']):raise AIUnavailable('Revision note response is incomplete.')
-    if not all(isinstance(r.get(k),list) and len(r[k])>=2 for k in ['outcomes','key_points','pitfalls','quick_check']):raise AIUnavailable('Revision note sections are incomplete.')
-    if len(r['explanation'])<100:raise AIUnavailable('Notes were too short to be useful.')
+    payload=_payload(course,topic,area,tier,difficulty)
+    # First try a compact guide: less prone to output truncation, lower token usage.
+    # Only retry with a still smaller prompt if required fields are missing.
+    r=request_json(COMPACT_STUDY_RULES,payload,max_output_tokens=6144)
+    err=_study_validation(r)
+    if err:
+        # Keep a useful diagnostic rather than silently swallowing response errors.
+        raise AIUnavailable(err+' Use the AI guide diagnostic to troubleshoot.')
+    r.setdefault('uncertainty','')
     return r
 
 def create_question(course,topic,area,tier='Higher',difficulty='Standard'):
