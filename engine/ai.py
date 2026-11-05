@@ -120,7 +120,7 @@ def request_json(instruction, payload, max_output_tokens=8192):
             return _parse_json_object(raw)
         except AIUnavailable as exc:
             if attempt==0 and any(label in str(exc) for label in ('HTTP 500','HTTP 502','HTTP 503','HTTP 504','timed out')):
-                time.sleep(1.5)
+                time.sleep(2.0)
                 continue
             raise
     raise AIUnavailable('Gemini could not complete this request.')

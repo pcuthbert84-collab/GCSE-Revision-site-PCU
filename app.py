@@ -258,7 +258,7 @@ def main():
         st.title('📚 DBSJP Revision Hub')
         page=st.radio('Navigation',['Revise & Test','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.2 • Content-first • Level 2 only')
+        st.caption('V4.3 • Content-first • Level 2 only')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
@@ -282,6 +282,17 @@ def main():
             st.divider()
             st.write('**3. Test a real revision-guide response**')
             st.caption('This tests the same generation and validation used by Revise, on a small, original BTEC Business topic. It uses your AI quota. No API key or student information is displayed.')
+            if st.button('4. Test compact revision guide (lower output)'):
+                try:
+                    demo_course={'name':'BTEC Business Level 2','kind':'BTEC','board':'Pearson','code':'HBGY2'}
+                    demo_topic={'title':'Teams and team-leading','source':'Team roles, leadership approaches, motivation and communication in businesses.'}
+                    with st.spinner('Testing a shorter Gemini revision guide…'):
+                        guide=with_ai(create_study,demo_course,demo_topic,'Business skills','Not tiered',compact=True)
+                    st.success('Compact guide generated and validated.')
+                    render_notes(guide)
+                except AIUnavailable as ex:
+                    st.error('Compact guide failed: '+str(ex))
+                    st.info('This is an upstream AI service issue if it reports HTTP 503. It is not a JSON parsing problem.')
             if st.button('3. Test complete revision guide'):
                 try:
                     demo_course={'name':'BTEC Business Level 2','kind':'BTEC','board':'Pearson','code':'HBGY2'}

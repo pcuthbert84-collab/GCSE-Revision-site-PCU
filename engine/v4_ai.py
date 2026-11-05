@@ -20,6 +20,28 @@ FEEDBACK_RULES='''You are providing formative, provisional practice feedback, no
 
 COMPACT_STUDY_RULES='''Produce a concise but substantive original Year 10/11 revision lesson on this exact school topic. No generic study tips or invented course requirements. Respond with a single JSON object using EXACTLY these keys: title (string), outcomes (array with 2 short items), explanation (string, 90-170 words with subject-specific explanation), key_points (array of 4 detailed facts/techniques), worked_example (string, one accurate concrete example with steps), pitfalls (array of 2 concrete misconceptions), quick_check (array of 2 objects each with question and answer strings), uncertainty (string, empty if none). Make responses compact. Never reproduce exam-board questions or invent quotations.'''
 
+# Low-output fallback avoids requiring a long structured response from a busy model.
+# It is still subject to availability; a 503 cannot be fixed entirely on the client.
+MINI_STUDY_RULES='''Create a useful, original and accurate mini GCSE/Level-2 revision lesson for the topic supplied. No generic study advice, unverifiable facts, invented literary quotes, or copied past-paper questions. For mathematics, verify all arithmetic. Respond ONLY with JSON containing: explanation (a substantive paragraph of about 80 words), worked_example (a concrete correct worked example), key_points (array of 3 substantive teaching facts), pitfalls (array of 2 genuine errors), quick_check (array of 2 objects with question and answer strings). Keep the entire response under about 400 words.'''
+
+
+def _is_transient_failure(error):
+    message=str(error)
+    return any(fragment in message for fragment in ('HTTP 500','HTTP 502','HTTP 503','HTTP 504','timed out'))
+
+
+def _normalize_mini_study(raw, topic):
+    if not isinstance(raw,dict):
+        raise AIUnavailable('Compact revision guide did not return a JSON object.')
+    title=topic.get('title','Topic')
+    result=dict(raw)
+    result['title']=title
+    result['outcomes']=[f'Explain the key ideas in {title}.',f'Apply the ideas in {title} to a new example.']
+    result.setdefault('uncertainty','Compact version, generated on demand and not independently checked against the exact specification point.')
+    error=_study_validation(result)
+    if error: raise AIUnavailable('Compact guide incomplete: '+error)
+    return result
+
 def _study_validation(r):
     if not isinstance(r,dict):return 'Gemini returned an invalid study-guide structure.'
     text_fields=('title','explanation','worked_example')
@@ -33,15 +55,27 @@ def _study_validation(r):
     if len(r['explanation'])<100:return 'Gemini explanation was too short to teach this topic.'
     return None
 
-def create_study(course,topic,area,tier='Higher',difficulty='Standard'):
+def create_study(course,topic,area,tier='Higher',difficulty='Standard',compact=False):
     payload=_payload(course,topic,area,tier,difficulty)
-    # First try a compact guide: less prone to output truncation, lower token usage.
-    # Only retry with a still smaller prompt if required fields are missing.
-    r=request_json(COMPACT_STUDY_RULES,payload,max_output_tokens=6144)
+    if compact:
+        # A smaller output can work when a longer generation hits upstream 503.
+        raw=request_json(MINI_STUDY_RULES,payload,max_output_tokens=2048)
+        return _normalize_mini_study(raw,topic)
+    try:
+        r=request_json(COMPACT_STUDY_RULES,payload,max_output_tokens=3072)
+    except AIUnavailable as exc:
+        if not _is_transient_failure(exc):
+            raise
+        # One extra, smaller request only after all standard transient retries fail.
+        try:
+            raw=request_json(MINI_STUDY_RULES,payload,max_output_tokens=2048)
+            return _normalize_mini_study(raw,topic)
+        except AIUnavailable as smaller_exc:
+            if _is_transient_failure(smaller_exc):
+                raise AIUnavailable('Gemini is temporarily unable to generate this topic guide (HTTP 503 / service capacity). Both normal and compact requests failed. Existing offline notes remain available; retry later or select another topic.') from smaller_exc
+            raise
     err=_study_validation(r)
-    if err:
-        # Keep a useful diagnostic rather than silently swallowing response errors.
-        raise AIUnavailable(err+' Use the AI guide diagnostic to troubleshoot.')
+    if err:raise AIUnavailable(err+' Use the AI guide diagnostic to troubleshoot.')
     r.setdefault('uncertainty','')
     return r
 

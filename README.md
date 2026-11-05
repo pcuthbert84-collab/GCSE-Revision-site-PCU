@@ -1,3 +1,7 @@
+# V4.3: Gemini 503 resilience update
+
+The revision-guide generator now requests smaller output, automatically attempts one compact mini-guide after temporary Gemini 5xx failures, and displays an accurate message if Google continues returning HTTP 503. A new **AI connection test → 4. Test compact revision guide** isolates the lower-output path. These changes cannot guarantee availability when Google's service is overloaded. Any retry consumes additional request allowance. Do not change your private API key.
+
 # DBSJP Revision Hub — V4.2 (content-first testing prototype)
 
 ## What's in V4
