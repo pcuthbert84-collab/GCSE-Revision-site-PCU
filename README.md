@@ -52,3 +52,15 @@ Suggested manual checks:
 3. Mathematics → topic Quadratic equations → factorising → Test myself. Check that a correct final answer is recognised and a different question is available after completing.
 4. Select a topic without prepared notes. It must explicitly say it isn't yet available, not present generic instructions as revision.
 5. Check all links and the optional API against current provider terms before sharing with students.
+
+
+## V3.1 — Fairer mathematics answer assessment
+- Checks mathematically equivalent numerical final answers and accepts quadratic roots in either order.
+- Accepts `x = -2, x = 3`, fractions/arithmetic, AED suffixes, and Ali/Sara labels in the final-answer field.
+- Never compares submitted working text with one exemplar method or marks an unparseable answer as wrong.
+- Clearly distinguishes prototype final-answer checks from method marks.
+- Correct first attempts let students continue immediately.
+- **Limitation:** Arbitrary working is not independently validated or awarded method marks. Full credit is a prototype *answer-check score*, not an official 4MA1 mark scheme.
+
+### V3.2 marking improvement
+For one-number Mathematics questions, students may enter complete arithmetic working into the answer box or the working box, including `80 x 0.2 = 16` followed by `80 + 16 = 96`. The arithmetic equalities are verified before extracting the final value. This is not a comprehensive method-marking engine; algebraic/prose methods still need further validation.

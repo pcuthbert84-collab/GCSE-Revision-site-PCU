@@ -26,6 +26,7 @@ if 'first_answer' not in st.session_state: st.session_state.first_answer=''
 if 'second_answer' not in st.session_state: st.session_state.second_answer=''
 if 'working' not in st.session_state: st.session_state.working=''
 if 'first_feedback' not in st.session_state: st.session_state.first_feedback=''
+if 'first_correct' not in st.session_state: st.session_state.first_correct=None
 if 'second_feedback' not in st.session_state: st.session_state.second_feedback=''
 if 'question_counter' not in st.session_state: st.session_state.question_counter=0
 if 'mode' not in st.session_state: st.session_state.mode='Revise'
@@ -38,6 +39,7 @@ def clear_question():
     st.session_state.second_answer=''
     st.session_state.working=''
     st.session_state.first_feedback=''
+    st.session_state.first_correct=None
     st.session_state.second_feedback=''
 
 def maths_for(topic):
@@ -133,11 +135,23 @@ def test_screen(course,subject,area,topic,math_skill,content):
             st.text_area('Show your working',key='working',height=110)
             st.text_input('Final answer',key='first_answer',placeholder='e.g. -2, 3')
         else:st.text_area('Type your answer',key='first_answer',height=160)
-        if st.button('Check my answer',type='primary',disabled=not st.session_state.first_answer.strip()):
-            st.session_state.first_feedback,_=assess(q,st.session_state.first_answer,st.session_state.working)
+        if st.button('Check my answer',type='primary',disabled=not (st.session_state.first_answer.strip() or (kind=='maths' and st.session_state.working.strip()))):
+            st.session_state.first_feedback,st.session_state.first_correct=assess(q,st.session_state.first_answer,st.session_state.working)
             st.session_state.step='feedback';st.rerun()
     elif st.session_state.step=='feedback':
-        st.info(st.session_state.first_feedback)
+        if kind=='maths' and st.session_state.first_correct is True:
+            st.success(st.session_state.first_feedback)
+            st.caption('Full prototype answer-check credit. Detailed method marks are not assessed yet.')
+            if st.button('See the worked example (one possible method)'):
+                st.session_state.step='finished';st.rerun()
+            if st.button('Try another question',type='primary'):
+                st.session_state.question_counter+=1;clear_question();st.rerun()
+            return
+        elif kind=='maths' and st.session_state.first_correct is None:
+            st.warning(st.session_state.first_feedback)
+            st.caption('Not marked incorrect. You may clarify your answer or reveal the solution.')
+        else:
+            st.info(st.session_state.first_feedback)
         if kind=='curated':
             st.markdown('**Check your answer against these success criteria:**')
             for point in q['question']['points']:st.markdown('- '+point)
@@ -145,6 +159,8 @@ def test_screen(course,subject,area,topic,math_skill,content):
             with st.expander('Need a hint?'):
                 st.write(q['question'].get('hint','Consider the steps and the question carefully.'))
         st.markdown('**Try again, or reveal the solution.**')
+        if kind=='maths':
+            st.caption('Different correct methods are welcome. The automatic checker currently scores final-answer accuracy, not method marks.')
         if kind=='maths':st.text_input('Improved final answer',key='second_answer')
         else:st.text_area('Your improved answer',key='second_answer',height=130)
         a,b=st.columns(2)
