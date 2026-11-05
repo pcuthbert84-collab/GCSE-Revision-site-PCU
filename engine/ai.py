@@ -22,6 +22,25 @@ def get_model():
     except Exception:
         return os.getenv('GEMINI_MODEL','gemini-2.5-flash-lite')
 
+# A secondary model is useful for upstream 503 errors. Never use this to bypass
+# 429 quotas, authentication failures, or paid-only model restrictions.
+# Both defaults have published free-tier text API availability; a project's own
+# billing settings are still the owner's responsibility.
+FREE_FALLBACK_MODELS = {'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'}
+
+def get_fallback_model():
+    try:
+        import streamlit as st
+        name = st.secrets.get('GEMINI_FALLBACK_MODEL', 'gemini-3.1-flash-lite')
+    except Exception:
+        name = os.getenv('GEMINI_FALLBACK_MODEL', 'gemini-3.1-flash-lite')
+    name = str(name).strip().removeprefix('models/')
+    return name if name in FREE_FALLBACK_MODELS else ''
+
+def _is_upstream_unavailable(error):
+    msg = str(error)
+    return any(x in msg for x in ('HTTP 500', 'HTTP 502', 'HTTP 503', 'HTTP 504', 'timed out'))
+
 def _safe_api_message(status, raw):
     """Classify an upstream error without publishing credentials or user content."""
     try:
@@ -100,35 +119,43 @@ def _parse_json_object(raw):
 
 
 def request_json(instruction, payload, max_output_tokens=8192):
-    """Structured response with limited retry on transient infrastructure failures.
+    """Structured generation; on upstream 5xx only, try one other free-tier model.
 
-    Larger study guides sometimes exceed the prior 4096-token response limit.
-    The quota is never bypassed and failures cannot silently trigger paid calls.
+    Do not change models on HTTP 429 or authentication/permission errors. Never
+    use arbitrary models chosen by the AI or send credentials to the UI.
     """
-    model=get_model().strip()
+    primary=get_model().strip().removeprefix('models/')
+    backup=get_fallback_model()
+    models=[primary]
+    if backup and backup != primary:
+        models.append(backup)
     body={'contents':[{'role':'user','parts':[{'text':instruction+'\nINPUT:\n'+json.dumps(payload,ensure_ascii=False)}]}],
           'generationConfig':{'temperature':0.2,'responseMimeType':'application/json',
                               'maxOutputTokens':max_output_tokens}}
-    for attempt in range(2):
+    for i,model in enumerate(models):
         try:
             data=_request(body,model,timeout=65)
             candidate=(data.get('candidates') or [{}])[0]
-            finish=candidate.get('finishReason','')
-            if finish=='MAX_TOKENS':
-                raise AIUnavailable('Gemini stopped early because the revision response was too long (MAX_TOKENS). Try a smaller topic or the compact-guide option.')
-            raw=_extract_text(data)
-            return _parse_json_object(raw)
+            if candidate.get('finishReason','')=='MAX_TOKENS':
+                raise AIUnavailable('Gemini stopped early (MAX_TOKENS). Use a shorter topic or compact guide.')
+            return _parse_json_object(_extract_text(data))
         except AIUnavailable as exc:
-            if attempt==0 and any(label in str(exc) for label in ('HTTP 500','HTTP 502','HTTP 503','HTTP 504','timed out')):
-                time.sleep(2.0)
+            if i==0 and len(models)>1 and _is_upstream_unavailable(exc):
+                # Only one attempt per model to protect free quotas.
                 continue
+            if i>0 and _is_upstream_unavailable(exc):
+                raise AIUnavailable(
+                    f'Both free-tier Gemini models failed with temporary upstream errors: '
+                    f'{primary} and {model}. Google service capacity appears unavailable; '
+                    'the problem is not your key or JSON parser. Offline revision remains available.'
+                ) from exc
             raise
     raise AIUnavailable('Gemini could not complete this request.')
 
 
-def connection_test():
+def connection_test(model_override=None):
     """Call the configured model with a tiny structured-output test; do not reveal the key."""
-    model=get_model().strip()
+    model=(model_override or get_model()).strip()
     body={'contents':[{'parts':[{'text':'Return exactly this JSON object: {"status":"ok"}'}]}],
           'generationConfig':{'temperature':0,'responseMimeType':'application/json','maxOutputTokens':128}}
     result=_request(body,model,timeout=20)

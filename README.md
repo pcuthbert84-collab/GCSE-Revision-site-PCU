@@ -72,3 +72,18 @@ Version 4.1 adds **AI connection test** in the Streamlit sidebar. Use **Check mo
 - HTTP 500, 502, 503, 504 and timeouts are retried once (a short pause); 429 quota responses are **not retried**. Each network request may count against the shared free-tier quota.
 - **AI connection test → 3. Test complete revision guide** exercises the actual revision generation, not just a tiny `{status: ok}` JSON call. Keep the Gemini Secrets key unchanged if the small test succeeds.
 - Long content can still fail due to model capacity or truncation. No errors are silently converted to marks or invented revision facts.
+
+
+### V4.4: upstream 503 protection
+Keep your current `GEMINI_API_KEY` and `GEMINI_MODEL`. Optionally add:
+
+```toml
+GEMINI_FALLBACK_MODEL = "gemini-3.1-flash-lite"
+```
+
+When and only when the configured primary model returns a transient upstream
+HTTP 500/502/503/504 or timeout, the app attempts a second, separately documented
+free-tier model. It does **not** switch for quota (429), auth (401/403), invalid
+requests or invalid JSON. The fallback is not a guarantee of availability and
+requests still use the project's free quota. Do not enable paid billing. The AI
+diagnostics page offers an independent test of the fallback model.

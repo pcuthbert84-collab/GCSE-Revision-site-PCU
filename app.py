@@ -10,7 +10,7 @@ from courses.revision_content import get_content
 from courses.maths_4ma1 import SKILLS
 from engine.questions import make_question
 from engine.marking import mark
-from engine.ai import get_key, get_model, connection_test, list_available_models, AIUnavailable
+from engine.ai import get_key, get_model, get_fallback_model, connection_test, list_available_models, AIUnavailable
 from engine.v4_ai import create_study,create_question,evaluate
 
 st.set_page_config(page_title='DBSJP Revision Hub | V4.2',page_icon='📚',layout='wide')
@@ -258,14 +258,14 @@ def main():
         st.title('📚 DBSJP Revision Hub')
         page=st.radio('Navigation',['Revise & Test','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.3 • Content-first • Level 2 only')
+        st.caption('V4.4 • Content-first • Level 2 only')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
     if page=='AI connection test':
         st.title('Gemini connection diagnostics')
         st.write('This test uses your configured key without displaying it. It makes one small Gemini request and may count towards your free quota.')
-        st.info('Configured model: '+get_model())
+        st.info('Primary model: '+get_model()+' · Backup (temporary 5xx only): '+(get_fallback_model() or 'disabled'))
         if not get_key():
             st.error('GEMINI_API_KEY is missing from Streamlit Secrets.')
         else:
@@ -279,6 +279,15 @@ def main():
                     with st.spinner('Making a small structured-output request…'):
                         st.success(connection_test())
                 except AIUnavailable as ex:st.error(str(ex))
+            if st.button('2b. Test the backup model and JSON response'):
+                backup=get_fallback_model()
+                if not backup or backup==get_model().strip():
+                    st.warning('No distinct approved backup model configured. Set GEMINI_FALLBACK_MODEL to gemini-3.1-flash-lite in Secrets.')
+                else:
+                    try:
+                        with st.spinner('Testing alternate model without exposing your key…'):
+                            st.success(connection_test(model_override=backup))
+                    except AIUnavailable as ex:st.error(str(ex))
             st.divider()
             st.write('**3. Test a real revision-guide response**')
             st.caption('This tests the same generation and validation used by Revise, on a small, original BTEC Business topic. It uses your AI quota. No API key or student information is displayed.')
