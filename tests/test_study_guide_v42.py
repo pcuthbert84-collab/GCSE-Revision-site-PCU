@@ -27,7 +27,7 @@ def test_valid_short_study_guide(monkeypatch):
     response={'title':'Team-leading','explanation':'Leading a team involves assigning responsibilities and communicating clear targets. '*3,
               'worked_example':'A team leader delegates each role, then checks progress against the agreed goals.',
               'outcomes':['Describe team roles','Explain communication'],
-              'key_points':['Point1','Point2','Point3','Point4'], 'pitfalls':['Mistake1','Mistake2'],
+              'key_points':['Delegation assigns responsibilities to team members','Clear milestones help leaders monitor progress','Two-way communication allows concerns to be raised','Defined roles reduce duplicated work'], 'pitfalls':['Mistake1','Mistake2'],
               'quick_check':[{'question':'What is a team?','answer':'People with shared goal'}, {'question':'Why delegate?','answer':'Match work to skills'}]}
     monkeypatch.setattr(v4_ai,'request_json',lambda *a,**k:response)
     result=v4_ai.create_study({'name':'BTEC Business'}, {'title':'Teams','source':''},'Business')

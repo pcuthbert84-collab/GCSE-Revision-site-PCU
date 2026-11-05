@@ -87,3 +87,14 @@ free-tier model. It does **not** switch for quota (429), auth (401/403), invalid
 requests or invalid JSON. The fallback is not a guarantee of availability and
 requests still use the project's free quota. Do not enable paid billing. The AI
 diagnostics page offers an independent test of the fallback model.
+
+## V4.5 — academically grounded generation and feedback
+
+- The generation engine sends a privacy-minimised extract (up to 2,200 characters) of the *selected* DBSJP school curriculum map, instead of the previous 350-character excerpt. When only a broad booklet/index heading is available, it marks that distinction in the model input. The extract is untrusted data, never instructions.
+- Prompts now require measurable, topic-specific learning outcomes, concrete explanations, legitimate worked examples, and accurate misconceptions. Course codes alone do not establish the exact assessment requirements or micro-specification. No invented set-text quotations, BTEC assignments, historical facts or exam-board endorsements.
+- Mini and normal revision guides must include genuine subject-specific learning objectives; vague stock outcomes and very short knowledge points fail validation. No generic outcomes are silently invented by the fallback parser.
+- Generated questions are original, self-contained, restricted to the selected topic and include marking criteria with a valid mark total. Hints must not reveal answers.
+- AI assessment explicitly accepts valid alternate methods/interpretations and supported partial credit. Scores remain indicative, and uncertain interpretations should be flagged for review rather than confidently marked wrong.
+- The working free-tier Gemini primary / backup model logic and diagnostic tools are unchanged. No API secrets are stored in the repository.
+
+This improves guardrails; it **does not** independently verify every generated scientific, historical or subject-specific statement or guarantee examiner-equivalent marks. Continue testing with anonymised learner answers and report questionable examples.
