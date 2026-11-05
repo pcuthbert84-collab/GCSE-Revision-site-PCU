@@ -100,6 +100,42 @@ def _matches(expected, submitted, qtype):
     return all(simplify(s-e)==0 for s,e in zip(submitted, expected))
 
 
+
+def _verified_method_credit(question, response):
+    """Very conservative partial credit for known, original numeric templates.
+
+    Recognises only meaningful correct intermediate calculations. This is a
+    *practice estimate*, not an attempt to reproduce Pearson's official rubric.
+    """
+    sid=question.get('skill_id')
+    if sid not in ('percentage_change','ratio_share'):
+        return 0, ''
+    lines=[line.strip() for line in response.splitlines() if '=' in line]
+    verified=[]
+    for line in lines:
+        clean=line.replace('×','*').replace('÷','/').replace('−','-')
+        clean=re.sub(r'(?<=\d)\s*[xX]\s*(?=\d)','*',clean)
+        parts=[_numeric(p.strip()) for p in clean.split('=')]
+        if len(parts)>=2 and all(p is not None for p in parts) and all(simplify(a-b)==0 for a,b in zip(parts,parts[1:])):
+            verified.append(parts[-1])
+    if not verified:return 0,''
+    parts=question.get('signature','').split('_')
+    try:
+        if sid=='percentage_change' and len(parts)==4:
+            original,pct=int(parts[1]),int(parts[2])
+            expected_change=sympify(original*pct)/100
+            if any(simplify(v-expected_change)==0 for v in verified):
+                return 1,'Correctly calculated the percentage amount (one provisional method mark).'
+        elif sid=='ratio_share' and len(parts)==4:
+            aa,bb,unit=map(int,parts[1:4])
+            if any(simplify(v-(aa+bb))==0 for v in verified):
+                return 1,'Correctly found the total number of ratio parts (one provisional method mark).'
+            if any(simplify(v-unit)==0 for v in verified):
+                return 1,'Correctly found the value of one ratio part (one provisional method mark).'
+    except (ValueError,TypeError):pass
+    return 0,''
+
+
 def mark(question, final_answer, working=''):
     """Return correct / incorrect / review-needed with transparent scope.
 
@@ -125,9 +161,10 @@ def mark(question, final_answer, working=''):
             submitted = [candidate]
             interpreted_steps = True
     if not submitted:
+        method_credit,method_message=_verified_method_credit(question,final_answer+'\n'+working)
         return {
-            'correct': None, 'mark': None, 'max_mark': question['marks'],
-            'feedback': ('I cannot reliably read your final answer. This is **not a wrong mark**. '
+            'correct': None, 'mark': method_credit or None, 'max_mark': question['marks'],
+            'feedback': (method_message+' ' if method_credit else '') + ('I cannot reliably read your final answer. This is **not a wrong mark**. '
                          'Please enter the final value(s) separately (for example `x = -2, x = 3`). '
                          'Your working may use any valid method.'),
             'needs_review': True,
@@ -143,10 +180,12 @@ def mark(question, final_answer, working=''):
         feedback = ('Your final answer does not match the verified solution yet. '
                     'Check your arithmetic and final values. **This is not a judgement that your method is wrong.** '
                     'You can revise your answer or reveal the worked solution.')
+    method_credit,method_message=_verified_method_credit(question,final_answer+'\n'+working) if not correct else (0,'')
+    if method_credit:feedback+=' '+method_message+' This is not a complete examiner mark.'
     return {
-        'correct': correct, 'mark': question['marks'] if correct else 0,
+        'correct': correct, 'mark': question['marks'] if correct else method_credit,
         'max_mark': question['marks'], 'feedback': feedback,
         'needs_review': bool(working.strip()) and not correct,
-        'method_note': ('Final-answer accuracy only. Working has not been reliably awarded method marks. '
+        'method_note': ('Maths final answers are checked exactly; only narrow, verified numerical steps receive provisional credit. '
                         'If your method is valid but the answer checker is unsure, request review.')
     }
