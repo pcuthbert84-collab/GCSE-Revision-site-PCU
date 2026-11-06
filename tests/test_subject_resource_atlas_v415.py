@@ -31,6 +31,17 @@ class ResourceAtlasTests(unittest.TestCase):
         self.assertEqual(pmt_topic_resources("Combined Science","Energy","Chemistry · Course topics"),[])
         self.assertEqual(pmt_topic_resources("Combined Science","Atomic structure",""),[])
         self.assertEqual(pmt_topic_resources("History","Cell biology",""),[])
+    def test_energy_changes_does_not_show_physics_energy_index(self):
+        from courses.subject_resource_atlas import topic_references
+        rows=topic_references("Combined Science","Energy changes",area="Chemistry")
+        self.assertFalse(any("physics-revision" in row["url"] for row in rows))
+        self.assertTrue(any("chemistry-revision" in row["url"] for row in rows))
+    def test_broad_atomic_structure_without_discipline_is_ambiguous(self):
+        self.assertEqual(pmt_topic_resources("Separate Sciences","Atomic structure",""),[])
+        self.assertEqual(pmt_topic_resources("Combined Science","Atomic structure",""),[])
+    def test_wrong_discipline_does_not_display_direct_science_page(self):
+        self.assertEqual(pmt_topic_resources("Combined Science","Energy","Chemistry"),[])
+        self.assertEqual(pmt_topic_resources("Separate Sciences","Waves","Biology"),[])
     def test_space_physics_not_trilogy(self):
         self.assertEqual(pmt_topic_resources("Combined Science","Space physics","Physics"),[])
         self.assertEqual(len(pmt_topic_resources("Separate Sciences","Space physics","Physics")),1)
