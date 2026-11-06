@@ -170,7 +170,7 @@ def pmt_topic_resources(subject, topic, area=""):
     key=aliases.get(key,key)
     # 'Atomic structure' is both a Chemistry and Physics concept. Without a
     # discipline selected, a source page from just one science is misleading.
-    if subject=="Combined Science" and key=="atomic structure" and not any(
+    if key=="atomic structure" and not any(
             x in str(area).casefold() for x in ("biology","chemistry","physics")):
         return []
     candidates=[]
@@ -233,14 +233,25 @@ def topic_references(subject,topic,source="",area=""):
     # A school topic's source may be an entire term: avoid matching every
     # incidental mention. Only topic title may trigger student links.
     results=[]; seen=set()
+    chosen_science=next((x for x in ("biology","chemistry","physics")
+                         if x in str(area).casefold()),"")
     for name,needles,title,url in TOPIC_REFERENCES:
         if name!=subject or not any(n in text for n in needles) or url in seen:
             continue
+        # Broad science index links are not substitutes for exact lesson pages.
+        # A Chemistry lesson called "Energy changes" must NEVER receive
+        # the Physics Energy catalogue simply because they share a word.
+        if subject in ("Combined Science","Separate Sciences") and "PMT" in title:
+            target=next((x for x in ("biology","chemistry","physics")
+                         if x in title.casefold()),"")
+            if not chosen_science or chosen_science!=target:
+                continue
         seen.add(url)
         results.append({"title":title,"url":url,"provider":title.split(" · ")[0],
             "kind":"topic_reference",
             "note":"Relevant specification section or topic index, not a checked one-to-one lesson mapping."})
-    return pmt_topic_resources(subject,topic,area)+results
+    direct=pmt_topic_resources(subject,topic,area)
+    return direct+[row for row in results if row["url"] not in {d["url"] for d in direct}]
 
 def metadata_for_ai(course,topic):
     """Small safe source metadata, NOT webpage text or unverified learning facts."""
