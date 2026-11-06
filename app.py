@@ -20,7 +20,7 @@ from courses.corbett_catalogue import fetch_catalogue, automatic_resources, cand
 from engine.math_display import stacked_fractions
 from engine.learning_path import learning_checks, suggested_route
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.15',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.14',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
@@ -590,7 +590,7 @@ def main():
 </div>''',unsafe_allow_html=True)
         page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.15 • DBSJP • Specification-linked resources')
+        st.caption('V4.14 • DBSJP • Learn + Exam practice')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
