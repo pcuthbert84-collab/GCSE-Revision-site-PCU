@@ -1,4 +1,4 @@
-"""DBSJP Revision Hub V4.6: content-first subject practice with optional free-tier Gemini.
+"""DBSJP Revision Hub V4.10: content-first subject practice with optional free-tier Gemini.
 No student accounts, progress database, permanent question bank or paid endpoints.
 """
 import secrets
@@ -14,8 +14,10 @@ from engine.v4_ai import create_study,create_question,evaluate
 from engine.quality_store import (load as quality_load, save as quality_save, configured as quality_configured,
     password_valid, approve_rule, add_resource, active_rules, archive, validate_direct_url)
 from courses.verified_resources import topic_resources
+from courses.corbett_catalogue import fetch_catalogue, automatic_resources, candidate_matches, resources_for_entry, normalize
+from engine.math_display import stacked_fractions
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.6',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.10',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
@@ -52,11 +54,25 @@ def context_rules(course,topic):
     return active_rules(data,course['name'],topic['title'])
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def live_corbett_catalogue():
+    """Fetch the real published index at most daily per Streamlit cache."""
+    return fetch_catalogue()
+
+def try_corbett_catalogue():
+    try: return live_corbett_catalogue(), ''
+    except Exception as exc: return [], str(exc)
+
+
 def show_resources(course,topic):
     st.divider()
     st.markdown('#### Free resources for this exact topic')
     data,_,_=read_quality()
     items=topic_resources(data,course['name'],topic['title'])
+    if course['name']=='Mathematics':
+        index_rows,_=try_corbett_catalogue()
+        items += automatic_resources(index_rows,course['name'],topic['title'])
+        items=list({item['url']:item for item in items}.values())
     if not items:
         st.info('No direct resource link has been verified for this exact topic yet. We will not show a generic homepage or invented link. An administrator can approve one in Academic Quality Manager.')
         return
@@ -94,20 +110,20 @@ def local_notes_for(name,title):
 
 def render_notes(note):
     st.markdown('#### Learning outcomes')
-    for p in note['outcomes']:st.markdown('- '+str(p))
+    for p in note['outcomes']:st.markdown('- '+stacked_fractions(str(p)))
     st.markdown('#### Understand the topic')
-    st.write(note['explanation'])
+    st.markdown(stacked_fractions(note['explanation']))
     st.markdown('#### Essential knowledge')
-    for p in note['key_points']:st.markdown('- '+str(p))
+    for p in note['key_points']:st.markdown('- '+stacked_fractions(str(p)))
     st.markdown('#### Worked example')
-    st.info(note['worked_example'])
+    st.markdown(stacked_fractions(note['worked_example']))
     st.markdown('#### Common mistakes')
-    for p in note['pitfalls']:st.markdown('- '+str(p))
+    for p in note['pitfalls']:st.markdown('- '+stacked_fractions(str(p)))
     with st.expander('Quick retrieval checks (with answers)'):
         for i,item in enumerate(note['quick_check'],1):
             if not isinstance(item,dict):continue
-            st.markdown(f"**{i}. {item.get('question','')}**")
-            st.write(item.get('answer',''))
+            st.markdown(f"**{i}. {stacked_fractions(item.get('question',''))}**")
+            st.markdown(stacked_fractions(item.get('answer','')))
     if note.get('uncertainty'):st.warning('Content to check: '+note['uncertainty'])
     st.caption('AI-created revision explanation; not approved or written by the examination board. Please report any inaccuracies.')
 
@@ -118,11 +134,11 @@ def revise(course,area,topic,tier):
     if cached_key in st.session_state.notes_cache:
         render_notes(st.session_state.notes_cache[cached_key])
     elif old:
-        st.markdown('#### What you need to know');st.write(old['goal'])
+        st.markdown('#### What you need to know');st.markdown(stacked_fractions(old['goal']))
         st.markdown('#### Essential knowledge')
-        for p in old['points']:st.markdown('- '+p)
-        st.info('**Worked explanation:** '+old['example'])
-        st.warning('**Common mistake:** '+old['mistake'])
+        for p in old['points']:st.markdown('- '+stacked_fractions(p))
+        st.markdown('**Worked explanation:** '+stacked_fractions(old['example']))
+        st.markdown('**Common mistake:** '+stacked_fractions(old['mistake']))
         if can_ai() and st.button('Create a more detailed revision guide',key='upgrade_notes'):
             try:
                 with st.spinner('Preparing a topic-specific explanation…'):
@@ -204,23 +220,23 @@ def render_feedback(res,first=True):
     else:st.info('Formative feedback')
     if res['mark'] is not None and (not res['uncertain'] or res['mark']>0):
         st.markdown(f"**{'Indicative mark' if res['confidence']!='high' else 'Checked/indicative mark'}:** {res['mark']}/{res['max']}")
-    if res['strength']:st.markdown('**What went well:** '+res['strength'])
-    if res['next']:st.markdown('**Next step:** '+res['next'])
+    if res['strength']:st.markdown('**What went well:** '+stacked_fractions(res['strength']))
+    if res['next']:st.markdown('**Next step:** '+stacked_fractions(res['next']))
     if first:st.caption('Feedback should help you improve without revealing the full solution. Marks on extended responses are provisional.')
 
 def solution(q):
     st.markdown('#### Model answer and criteria')
     if q['kind']=='exact':
-        st.markdown(q['data']['working'])
-        for item in q['data'].get('rubric',[]):st.markdown('- '+item)
+        st.markdown(stacked_fractions(q['data']['working']))
+        for item in q['data'].get('rubric',[]):st.markdown('- '+stacked_fractions(item))
         st.caption('Exemplar method only. Other correct mathematical methods must also earn credit.')
     elif q['kind']=='guided':
-        st.write(q['data']['model'])
-        for item in q['data'].get('points',[]):st.markdown('- '+item)
+        st.markdown(stacked_fractions(q['data']['model']))
+        for item in q['data'].get('points',[]):st.markdown('- '+stacked_fractions(item))
     else:
-        st.write(q['data']['model_answer'])
+        st.markdown(stacked_fractions(q['data']['model_answer']))
         for item in q['data']['marking_points']:
-            st.markdown(f"- **{item['credit']} mark(s):** {item['criterion']}")
+            st.markdown(f"- **{item['credit']} mark(s):** {stacked_fractions(item['criterion'])}")
         if q['data'].get('uncertainty'):st.warning('Check: '+q['data']['uncertainty'])
     st.caption('This is an original learning example, not an official past-paper mark scheme.')
 
@@ -237,11 +253,17 @@ def testing(course,area,topic,tier):
             if q:
                 st.session_state.active_question=q;st.session_state.question_key=context+(difficulty,)
                 st.session_state.attempt_stage='first';st.rerun()
-            else:st.warning('No reviewed offline question exists for this topic. Set a Gemini API key to enable original question generation.')
+            else:
+                if can_ai():
+                    st.info('No reviewed offline question exists for this topic. Gemini was unable to create a complete question this time; the connection is configured. Try again or choose another topic.')
+                elif get_key():
+                    st.info('This browser session has reached its AI-request safety cap. There is no reviewed offline question for this topic.')
+                else:
+                    st.warning('No reviewed offline question exists for this topic. Configure the Gemini API key in Streamlit Secrets to generate questions.')
         return
     q=st.session_state.active_question
     st.caption(f"Original practice · {st.session_state.question_key[-1]} · {q['max_marks']} marks · {('AI-generated, provisional' if q['kind']=='ai' else 'Locally generated')}")
-    st.markdown(q['prompt'])
+    st.markdown(stacked_fractions(q['prompt']))
     if st.session_state.attempt_stage=='first':
         st.text_area('Your full answer and working',key='first_text',height=180,placeholder='Show your method and your final answer. Alternative correct methods are welcome.')
         if st.button('Check my answer',type='primary',disabled=not st.session_state.first_text.strip()):
@@ -252,7 +274,7 @@ def testing(course,area,topic,tier):
         if st.session_state.first_result.get('correct') is True and not st.session_state.first_result['uncertain']:
             st.success('You can finish now or try another question. You do not need to copy the model method.')
         with st.expander('Hint (optional)'):
-            st.write(q['data'].get('hint','Review the question carefully.'))
+            st.markdown(stacked_fractions(q['data'].get('hint','Review the question carefully.')))
         st.markdown('#### Improve your answer (optional)')
         st.text_area('Your second attempt',key='retry_text',height=170,placeholder='Improve your answer using the feedback above.')
         col1,col2=st.columns(2)
@@ -310,7 +332,7 @@ def academic_quality_manager():
     if not durable:
         st.error('This is a preview. Permanent GitHub-backed storage is not active.');return
     st.success(f"Permanent review storage connected · {sum(r.get('status')=='approved' for r in data['rules'])} rules · {sum(r.get('status')=='approved' for r in data['resources'])} approved direct links")
-    tab_rules,tab_links,tab_items=st.tabs(['Approve correction','Approve exact-topic link','Review / archive'])
+    tab_rules,tab_links,tab_corbett,tab_items=st.tabs(['Approve correction','Approve exact-topic link','Corbettmaths catalogue','Review / archive'])
     with tab_rules:
         issue_options=st.session_state.reported_issues
         picked=None
@@ -355,6 +377,70 @@ def academic_quality_manager():
                     quality_save(revised,sha,action='approve direct resource');st.success('Verified exact-topic link saved to GitHub.');st.rerun()
                 except (RuntimeError,ValueError) as exc:st.error(str(exc))
         st.caption('The system checks the URL format and approved provider, but cannot guarantee that a webpage stays accessible or accurate. Check links manually before approval.')
+    with tab_corbett:
+        st.markdown('#### Corbettmaths: indexed video, questions and textbook exercise')
+        st.caption('Live index from https://corbettmaths.com/contents/ (cached for 24 hours). Direct URLs are read from publisher links, never guessed from video numbers.')
+        if st.button('Refresh Corbettmaths index from website'):
+            live_corbett_catalogue.clear()
+        entries,error=try_corbett_catalogue()
+        if error:
+            st.warning('Could not retrieve the published Corbettmaths catalogue. No new links are being recommended: '+error)
+        else:
+            st.success(f'{len(entries)} published rows found. Only exact title matches are shown automatically to students; other suggestions require approval.')
+            math_groups=topic_groups('Mathematics')
+            all_topics=[t for group in math_groups.values() for t in group]
+            matches={t['title']:candidate_matches(entries,t['title'],t.get('source','')) for t in all_topics}
+            exact_count=sum(bool([r for r in entries if r['key']==normalize(t['title'])]) for t in all_topics)
+            suggested_count=sum(bool(matches[t['title']]) for t in all_topics)
+            st.caption(f'DBSJP Maths selections: {len(all_topics)} · exact-title matches: {exact_count} · selections with review suggestions: {suggested_count}. Broad teaching blocks may contain several skills; these are never auto-approved.')
+            choices=list(range(len(all_topics)))
+            selected=st.selectbox('DBSJP Maths topic / teaching block',choices,
+                  format_func=lambda i:all_topics[i]['title']+' · '+ ('school curriculum' if all_topics[i].get('source') else 'course index'))
+            active=all_topics[selected]
+            if active.get('source'):
+                with st.expander('DBSJP curriculum context'):
+                    st.write(active['source'])
+            options=matches[active['title']]
+            if not options:
+                st.info('No matching publisher entries were found for this curriculum selection. You can still add an exact verified link using the other approval tab.')
+            else:
+                st.caption(f'{len(options)} possible publisher entries, including matches to individual curriculum-map lines.')
+                labels=[f"{item['entry']['title']} (Video {item['entry']['video_number']}) — {item['match']}" for item in options]
+                preview=st.selectbox('Preview and verify a proposed Corbettmaths entry',list(range(len(options))),format_func=lambda i:labels[i])
+                preview_entry=options[preview]['entry']
+                preview_links=resources_for_entry(preview_entry,active['title'])
+                for resource in preview_links:
+                    st.link_button('Open '+resource['title'],resource['url'])
+                with st.form('approve_corbett_bundles'):
+                    picks=st.multiselect('Select the exact Corbettmaths entries that genuinely teach this topic',list(range(len(options))),format_func=lambda i:labels[i])
+                    for idx in picks[:10]:
+                        row=options[idx]['entry']
+                        st.markdown('**'+row['title']+'**')
+                        for typ in ('video','practice','textbook'):
+                            if row.get(typ):st.write(typ.title()+': '+row[typ])
+                    reviewer_note=st.text_area('Verification notes',placeholder='I opened each selected lesson, checked the DBSJP topic and confirmed that the video/questions/exercise are appropriate and accessible.')
+                    verified=st.checkbox('I opened and checked each selected resource and approve all its displayed links for this exact DBSJP topic.')
+                    approved=st.form_submit_button('Approve selected resources and save permanently',type='primary')
+                if approved:
+                    if not picks:st.error('Select at least one publisher entry.')
+                    elif not verified:st.error('Please personally check the exact resource pages before approving.')
+                    elif len(reviewer_note.strip())<15:st.error('Include meaningful verification notes.')
+                    else:
+                        try:
+                            updated=data
+                            added=0
+                            for idx in picks:
+                                for resource in resources_for_entry(options[idx]['entry'],active['title']):
+                                    if any(x.get('subject')=='Mathematics' and x.get('topic')==active['title'] and x.get('url')==resource['url'] and x.get('status')=='approved' for x in updated['resources']):
+                                        continue
+                                    updated=add_resource(updated,subject='Mathematics',topic=active['title'],title=resource['title'],url=resource['url'],provider='Corbettmaths',reviewer_note=reviewer_note)
+                                    added+=1
+                            if added:
+                                quality_save(updated,sha,action='approve Corbettmaths index resources')
+                                st.success(f'{added} direct resource links permanently saved to GitHub.');st.rerun()
+                            else:st.info('All selected links are already approved for this topic.')
+                        except (RuntimeError,ValueError) as exc:st.error(str(exc))
+
     with tab_items:
         for kind in ('rules','resources'):
             st.markdown('#### '+('Approved academic rules' if kind=='rules' else 'Approved topic resources'))
@@ -378,7 +464,7 @@ def main():
         st.title('📚 DBSJP Revision Hub')
         page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.6 • Content-first • Level 2 only')
+        st.caption('V4.10 • Corbettmaths catalogue • Level 2 only')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')

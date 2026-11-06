@@ -153,3 +153,56 @@ python -m pytest -q
 ```
 
 Checks cover strict direct-link matching, refusal of generic/search URLs, rule scope, archived rules, GitHub save failure without Secrets, API data roundtrip, and the prior marking/AI tests.
+
+## V4.7 — Question-generation resilience
+
+- Fixes incorrect “Question was incomplete” rejection when optional `reference_method` (or other optional metadata) is blank/missing.
+- Validates required student-facing question, hint, model answer, and integer rubric allocations instead of requiring optional metadata.
+- Retries at most once with a compact question prompt after a genuine content/schema error or truncated JSON. Quota and authentication failures do **not** trigger this retry.
+- Replaces the misleading “Set a Gemini API key” notice when a configured model produces an incomplete question.
+- Keeps the V4.6 Academic Quality Manager, verified direct links and free-tier model fallback. No new Secrets required.
+
+## V4.8 — vertical mathematical fractions
+
+- Gemini's revision guides, questions, worked answers and marking feedback are explicitly instructed to use stacked LaTeX fractions (`$\\dfrac{a}{b}$`), never slash notation for mathematical fractions.
+- Learner-facing text uses `engine.math_display.stacked_fractions` to display common simple and parenthesised algebraic slash fractions vertically, including fractions inside `$...$`/`$$...$$`.
+- URL paths, dates, links and code spans are not changed. More complicated nested expressions should be generated as explicit LaTeX by Gemini; they are not indiscriminately rewritten because doing so could alter mathematical meaning.
+- No Streamlit Secrets changes are required. The raw question and student answers remain unchanged for marking.
+
+
+## V4.9: Corbettmaths direct resource bundles
+
+The Maths resource panel includes the three exact Corbettmaths links for Standard Form (video 300, practice questions and textbook exercise); separate videos 301–303 for addition, multiplication and division; and verified Vectors and Column Vectors bundles. These links were checked against the public Corbettmaths contents listing. They are fixed approved URLs, not guessed URLs or links to the contents homepage. Other Maths topics remain subject to separate verification or approval in the Academic Quality Manager.
+
+## V4.10: Corbettmaths complete live index and DBSJP review workflow
+
+The Mathematics resources section reads the **real linked entries** from
+`https://corbettmaths.com/contents/` using BeautifulSoup. Each source row may
+provide its own direct teaching video, practice questions and textbook exercise.
+No URL is built from a guessed video number or the name of a topic. The index
+is fetched on demand and cached by Streamlit for 24 hours. Its HTML is
+processed only on the server, and source URLs are limited to the Corbettmaths
+domain. Requests are time-bounded and a failed or unexpectedly short scrape
+is treated as unavailable rather than creating speculative links.
+
+* A unique **exact index-title match** for a selected DBSJP Mathematics topic
+  can display the publisher's directly linked resources immediately.
+* Broad DBSJP teaching blocks (such as `Y11 · Algebra 3`) are **never**
+  automatically expanded to loosely matching resources. In **Academic Quality
+  Manager → Corbettmaths catalogue**, select a school Maths topic and review
+  suggested Corbettmaths index entries; open each linked resource before
+  approving it. Each approved video, worksheet or textbook exercise is stored
+  under that exact school topic in private GitHub-backed quality storage.
+* Only an admin who has checked the actual page should tick the confirmation.
+  Approved links persist with the existing `QUALITY_GITHUB_*` credentials.
+* The index catalogue reflects what Corbettmaths publishes; it does **not**
+  itself establish exact Pearson IGCSE tier/specification alignment. Teachers
+  must review those matches, especially optional or advanced subtopics.
+* Where the source website is offline, the previously reviewed fixed resources
+  still appear, as do administrator-approved links stored in GitHub.
+
+The complete index is fetched by the deployed Streamlit server, rather than
+bundled as a supposedly permanent list; publisher URLs can change.
+The full index and candidate-matching logic have regression tests with a
+local representative HTML fixture. Live Corbettmaths reachability depends on
+network access from the Streamlit host and should be checked in production.

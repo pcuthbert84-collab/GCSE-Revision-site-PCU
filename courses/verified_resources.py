@@ -4,6 +4,71 @@ These are teaching resources, not claims of exam-board endorsement.
 """
 from engine.quality_store import validate_direct_url
 
+# Each item below is a URL verified from the named Corbettmaths contents row.
+# Do not derive video URLs from numbers: the numbering is an index, not a URL scheme.
+# Subtopic matching is deliberately separate from the broad Standard Form topic.
+CORBETT_BUNDLES = {
+    'standard form': [
+        ('Video 300 — Standard Form', 'https://corbettmaths.com/2013/04/28/standard-form/'),
+        ('Standard Form — practice questions', 'https://corbettmaths.com/2019/08/29/standard-form-practice-questions/'),
+        ('Standard Form — textbook exercise', 'https://corbettmaths.com/2019/10/07/standard-form-textbook-exercise/'),
+    ],
+    'standard form addition': [
+        ('Video 301 — Standard Form: Addition', 'https://corbettmaths.com/2013/05/03/standard-form-addition/'),
+        ('Standard Form — practice questions', 'https://corbettmaths.com/2019/08/29/standard-form-practice-questions/'),
+        ('Standard Form — textbook exercise', 'https://corbettmaths.com/2019/10/07/standard-form-textbook-exercise/'),
+    ],
+    'standard form multiplication': [
+        ('Video 302 — Standard Form: Multiplication', 'https://corbettmaths.com/2013/04/29/standard-form-multiplication/'),
+        ('Standard Form — practice questions', 'https://corbettmaths.com/2019/08/29/standard-form-practice-questions/'),
+        ('Standard Form — textbook exercise', 'https://corbettmaths.com/2019/10/07/standard-form-textbook-exercise/'),
+    ],
+    'standard form division': [
+        ('Video 303 — Standard Form: Division', 'https://corbettmaths.com/2013/05/03/standard-form-division/'),
+        ('Standard Form — practice questions', 'https://corbettmaths.com/2019/08/29/standard-form-practice-questions/'),
+        ('Standard Form — textbook exercise', 'https://corbettmaths.com/2019/10/07/standard-form-textbook-exercise/'),
+    ],
+    'vectors': [
+        ('Video 353 — Vectors', 'https://corbettmaths.com/2016/04/25/vectors/'),
+        ('Vectors — practice questions', 'https://corbettmaths.com/wp-content/uploads/2013/02/vectors-pdf.pdf'),
+    ],
+    'column vectors': [
+        ('Video 353a — Column Vectors', 'https://corbettmaths.com/2017/09/25/column-vectors/'),
+        ('Column Vectors — practice questions', 'https://corbettmaths.com/2021/07/12/column-vectors-practice-questions/'),
+        ('Column Vectors — textbook exercise', 'https://corbettmaths.com/2019/10/08/column-vectors-textbook-exercise/'),
+    ],
+}
+
+
+def corbett_resources(subject, topic):
+    """Show reviewed, directly linked bundles only for correctly identified Maths topics."""
+    if subject != 'Mathematics':
+        return []
+    import re
+    normal = re.sub(r'[^a-z0-9]+', ' ', str(topic).casefold()).strip()
+    # Map only unambiguous aliases; do not match broad terms such as 'form' or 'vector'.
+    aliases = {
+        'scientific notation': 'standard form',
+        'standard form numbers': 'standard form',
+        'adding standard form': 'standard form addition',
+        'standard form adding': 'standard form addition',
+        'multiplying standard form': 'standard form multiplication',
+        'dividing standard form': 'standard form division',
+        'vector': 'vectors',
+        'vector geometry': 'vectors',
+        'vectors and vector geometry': 'vectors',
+        'column vector': 'column vectors',
+    }
+    key = aliases.get(normal, normal)
+    # A course topic labelled simply Standard Form gets the introductory resources.
+    # Distinct arithmetic topics use their own verified video, not Video 300.
+    return [
+        {'subject': subject, 'topic': topic, 'title': title,
+         'provider': 'Corbettmaths', 'url': url, 'status': 'approved',
+         'source': 'verified Corbettmaths contents index'}
+        for title,url in CORBETT_BUNDLES.get(key, [])
+    ]
+
 SEEDS = [
  {'subject':'Mathematics', 'needles':['solving quadratics by factoris','quadratic equations by factoris','quadratic factoris'],
   'title':'Solving quadratic equations by factorising — video', 'provider':'Corbettmaths',
@@ -49,7 +114,7 @@ def seeded_resources(subject, topic):
 
 def topic_resources(store, subject, topic):
     from engine.quality_store import matching_resources
-    found = seeded_resources(subject,topic) + matching_resources(store,subject,topic)
+    found = corbett_resources(subject,topic) + seeded_resources(subject,topic) + matching_resources(store,subject,topic)
     dedup={}
     for item in found:
         try:
