@@ -15,11 +15,12 @@ from engine.exam_modes import exam_modes
 from engine.quality_store import (load as quality_load, save as quality_save, configured as quality_configured,
     password_valid, approve_rule, add_resource, active_rules, archive, validate_direct_url)
 from courses.verified_resources import topic_resources
+from courses.subject_resource_atlas import qualification_reference,directory_resources,topic_references,SEPARATE_SCIENCE_SPECS
 from courses.corbett_catalogue import fetch_catalogue, automatic_resources, candidate_matches, resources_for_entry, normalize
 from engine.math_display import stacked_fractions
 from engine.learning_path import learning_checks, suggested_route
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.14',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.15',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
@@ -109,6 +110,36 @@ def show_resources(course,topic):
         if st.button('Add resource issue to review list',disabled=not link_note.strip(),key='report_resource_'+str(abs(hash((course['name'],topic['title']))))):
             st.session_state.reported_issues.append({'subject':course['name'],'topic':topic['title'],'question':'Resource links: '+', '.join(item['url'] for item in items),'issue':link_note,'question_source':'revision link','first_feedback':''})
             st.success('Resource issue added to Testing issues for administrator review.')
+
+
+def show_subject_library(course,topic,area=''):
+    """Clearly distinguish official specification from general revision catalogues."""
+    official=qualification_reference(course)
+    related=topic_references(course['name'],topic['title'],topic.get('source',''),area)
+    directories=directory_resources(course['name'])
+    with st.expander('Official course specification and subject resource library'):
+        st.caption('These are external websites. A catalogue is not necessarily a direct lesson, and some providers offer paid options. Always use your DBSJP exam route and prescribed texts.')
+        if official:
+            st.link_button(official['title'],official['url'])
+            st.caption('Official awarding-body qualification page. Check modules, examination series, chosen units and subject options.')
+        elif course['name']=='Separate Sciences':
+            st.info('AQA Separate Sciences comprise three qualifications (8461 Biology, 8462 Chemistry, 8463 Physics). Confirm the subject and tier.')
+            for reference in SEPARATE_SCIENCE_SPECS:
+                st.link_button(reference['title'],reference['url'])
+        else:
+            st.info('An exact official specification link is not yet confirmed for this course code; ask your teacher before relying on an external syllabus.')
+        if related:
+            st.markdown('**Relevant topic sections or indexed topic collections**')
+            for item in related:
+                st.link_button(item['title'],item['url'])
+                st.caption(item['note'])
+        if directories:
+            st.markdown('**More revision collections for this subject**')
+            for item in directories:
+                st.link_button(item['title'],item['url'])
+                st.caption(item['note'])
+        if not related and not directories:
+            st.caption('No additional public topic catalogue has yet been matched reliably to this exact course. The official qualification link above remains the starting point.')
 
 
 def reset_q():
@@ -559,7 +590,7 @@ def main():
 </div>''',unsafe_allow_html=True)
         page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.14 • DBSJP • Learn + Exam practice')
+        st.caption('V4.15 • DBSJP • Specification-linked resources')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
@@ -648,6 +679,7 @@ def main():
     subject=st.selectbox('Subject',sorted(COURSES),key='subject_choice')
     course=COURSES[subject]
     st.caption(f"{course.get('kind','Level 2')} · {course.get('board') or 'Board to confirm'} · {course.get('code') or 'Code to confirm'}")
+    if course.get('note'):st.caption(course['note'])
     groupmap=topic_groups(subject)
     area=st.selectbox('Choose a topic group',list(groupmap),key=f'group_{subject}')
     topics=groupmap[area]
@@ -676,6 +708,7 @@ def main():
     if not course['spec_verified']:
         st.caption('⚠️ Course/code mapping is recorded, but full specification-point checking remains to be completed. Marks are practice estimates.')
     if st.session_state.question_key and st.session_state.question_key[:4]!=(subject,area,topic['title'],tier):reset_q()
+    show_subject_library(course,topic,area)
     st.markdown('### Choose how to study')
     option=st.radio('Learning pathway',['Learn the topic','Exam practice'],
         key='revision_route',horizontal=True,

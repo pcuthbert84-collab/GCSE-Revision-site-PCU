@@ -33,6 +33,7 @@ def get_courses():
         if name in CODES:c['board'],c['code']=CODES[name]
         if name=='BTEC Sport':c['note']='HYP4 only; verify unit size prior to live assessment.'
         if name=='Separate Sciences':c['note']='Each separate science has its own AQA paper and specification.'
+        if name=='Geography':c['note']='The 4XGE1 code identifies Pearson modular Geography. Confirm the 4WGE1 and 4WGE2 unit route and chosen topics before treating practice questions as exam-specific.'
         c['mapped']=MAPS.get(name,[])
         c['spec_verified']=name=='Mathematics' # Confirmed by user; the others require final exact unit-level audit
     return courses
