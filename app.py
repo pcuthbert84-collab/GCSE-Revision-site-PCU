@@ -16,8 +16,9 @@ from engine.quality_store import (load as quality_load, save as quality_save, co
 from courses.verified_resources import topic_resources
 from courses.corbett_catalogue import fetch_catalogue, automatic_resources, candidate_matches, resources_for_entry, normalize
 from engine.math_display import stacked_fractions
+from engine.learning_path import learning_checks, suggested_route
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.12',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.13',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
@@ -36,7 +37,7 @@ h1,h2,h3{letter-spacing:-.02em}
 MAX_AI_CALLS_PER_SESSION=65
 for name,default in {'ai_calls':0,'notes_cache':{},'active_question':None,'attempt_stage':'new',
                      'first_text':'','retry_text':'','first_result':None,'second_result':None,
-                     'attempt_summary':[],'reported_issues':[],'question_key':None,'level':'Standard','start_id':0,'admin_authorised':False}.items():
+                     'attempt_summary':[],'reported_issues':[],'question_key':None,'level':'Standard','start_id':0,'admin_authorised':False,'learning_revealed':{}}.items():
     if name not in st.session_state:st.session_state[name]=default
 
 def can_ai():return bool(get_key()) and st.session_state.ai_calls<MAX_AI_CALLS_PER_SESSION
@@ -114,6 +115,43 @@ def local_notes_for(name,title):
     if title.startswith('Y10') or title.startswith('Y11'):return None
     return get_content(name,title)
 
+def switch_route(route):
+    """Called by Streamlit buttons before widgets are instantiated on rerun."""
+    st.session_state.revision_route=route
+
+
+def render_learning_checks(course, area, topic, tier, guide=None, local_note=None):
+    """Formative retrieval checks; never award unsound numerical marks."""
+    checks=learning_checks(guide,local_note)
+    if not checks:
+        st.info('When a revision guide or reviewed local lesson is available, short learning checks will appear here.')
+        return
+    st.markdown('#### Check your understanding')
+    st.caption('Try each question from memory. Reveal the reference answer only after writing your own response. These are learning checks, not examination marks.')
+    identity=(course['name'],area,topic['title'],tier)
+    for i,check in enumerate(checks):
+        item_key='lc_'+str(abs(hash(identity+(i,))))
+        st.markdown('**Check '+str(i+1)+':** '+stacked_fractions(check['question']))
+        attempt=st.text_area('Your answer',key=item_key+'_answer',height=90,
+            placeholder='Write what you remember before viewing the example answer.')
+        reveal_key=item_key+'_revealed'
+        if st.button('Reveal reference answer',key=item_key+'_reveal',disabled=not attempt.strip()):
+            st.session_state.learning_revealed[reveal_key]=True
+        if st.session_state.learning_revealed.get(reveal_key):
+            st.markdown('**Example answer:** '+stacked_fractions(check['answer']))
+            reflection=st.radio('How close was your response?',
+                ['Not yet secure','Partly correct','Secure'],
+                key=item_key+'_reflection',horizontal=True)
+            if reflection=='Not yet secure':
+                st.info('Revisit the worked example, then try explaining this idea again without looking.')
+            elif reflection=='Partly correct':
+                st.info('Identify the key detail you missed and add it to your own answer.')
+            else:
+                st.success('Ready to try exam practice on this topic.')
+    st.button('Continue to exam practice',type='primary',
+        key='move_to_exam',on_click=switch_route,args=('Exam practice',))
+
+
 def render_notes(note):
     st.markdown('#### Learning outcomes')
     for p in note['outcomes']:st.markdown('- '+stacked_fractions(str(p)))
@@ -125,11 +163,7 @@ def render_notes(note):
     st.markdown(stacked_fractions(note['worked_example']))
     st.markdown('#### Common mistakes')
     for p in note['pitfalls']:st.markdown('- '+stacked_fractions(str(p)))
-    with st.expander('Quick retrieval checks (with answers)'):
-        for i,item in enumerate(note['quick_check'],1):
-            if not isinstance(item,dict):continue
-            st.markdown(f"**{i}. {stacked_fractions(item.get('question',''))}**")
-            st.markdown(stacked_fractions(item.get('answer','')))
+    st.caption('Retrieval questions appear below. Try them before revealing the example answers.')
     if note.get('uncertainty'):st.warning('Content to check: '+note['uncertainty'])
     st.caption('AI-created revision explanation; not approved or written by the examination board. Please report any inaccuracies.')
 
@@ -166,6 +200,8 @@ def revise(course,area,topic,tier):
                 except AIUnavailable as ex:st.warning(str(ex))
         else:
             st.warning('A full explanation for this topic is not prewritten. Add the free Gemini API key in Streamlit Secrets to generate it, or use the original school course outline above.')
+    render_learning_checks(course,area,topic,tier,
+        guide=st.session_state.notes_cache.get(cached_key),local_note=old)
     show_resources(course,topic)
     with st.expander('Report an inaccurate revision explanation'):
         guide_note=st.text_area('What should be corrected?',key='guide_issue_'+str(abs(hash((course['name'],topic['title'])))))
@@ -247,12 +283,13 @@ def solution(q):
     st.caption('This is an original learning example, not an official past-paper mark scheme.')
 
 def testing(course,area,topic,tier):
-    st.subheader('Test yourself · '+topic['title'])
+    st.subheader('Exam practice · '+topic['title'])
     context=(course['name'],area,topic['title'],tier)
     if st.session_state.question_key and st.session_state.question_key[:4]!=context:reset_q()
     if st.session_state.active_question is None:
         difficulty=st.select_slider('Difficulty',['Foundation','Standard','Challenge'],value=st.session_state.level,key='question_difficulty')
-        st.write('One question at a time, one answer box for all working, personalised feedback and an optional second attempt.')
+        st.write('Practise an original, examination-style task at a chosen difficulty. Submit a full answer, receive provisional feedback, and improve it on a second attempt.')
+        st.caption('These are original practice questions, not official past-paper questions. Current AI-generated questions are limited to 2–8 marks; official 16-mark essay simulation is not yet available.')
         if not can_ai():st.caption('AI is currently unavailable or has reached this session’s cap. Prewritten questions will be offered where available.')
         if st.button('Generate a question',type='primary'):
             q=new_question(course,area,topic,tier,difficulty)
@@ -301,6 +338,12 @@ def testing(course,area,topic,tier):
             elif f['mark']<0.5*f['max']:
                 st.session_state.level={'Foundation':'Foundation','Standard':'Foundation','Challenge':'Standard'}[st.session_state.question_key[-1]]
         st.caption('Next question difficulty is adjusted using first-attempt evidence, not hints or second-attempt marks.')
+        _route,_tip=suggested_route(f.get('mark') if f else None,
+            f.get('max') if f else None, bool(f.get('uncertain')) if f else True)
+        st.info('Suggested next step: '+_tip)
+        if _route in ('learn','review'):
+            st.button('Return to the lesson for this topic',
+                on_click=switch_route,args=('Learn the topic',),key='review_lesson')
         if st.button('Next question',type='primary'):
             st.session_state.start_id+=1;reset_q();st.session_state.question_difficulty=st.session_state.level;st.rerun()
     with st.expander('Flag a problem with this question or marking'):
@@ -476,7 +519,7 @@ def main():
 </div>''',unsafe_allow_html=True)
         page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.12 • Academic teaching • Corbettmaths • Level 2')
+        st.caption('V4.13 • Learn + Exam practice • Level 2')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
@@ -593,8 +636,15 @@ def main():
     if not course['spec_verified']:
         st.caption('⚠️ Course/code mapping is recorded, but full specification-point checking remains to be completed. Marks are practice estimates.')
     if st.session_state.question_key and st.session_state.question_key[:4]!=(subject,area,topic['title'],tier):reset_q()
-    option=st.radio('What would you like to do?',['📖 Revise','✏️ Test myself'],horizontal=True)
-    if option.startswith('📖'):revise(course,area,topic,tier)
-    else:testing(course,area,topic,tier)
+    st.markdown('### Choose how to study')
+    option=st.radio('Learning pathway',['Learn the topic','Exam practice'],
+        key='revision_route',horizontal=True,
+        help='Learn explains and checks understanding; Exam practice generates an original marked task with optional improvement.')
+    if option=='Learn the topic':
+        st.caption('Understand → worked example → retrieval check → exam practice')
+        revise(course,area,topic,tier)
+    else:
+        st.caption('Attempt → feedback → second attempt → next recommended step')
+        testing(course,area,topic,tier)
 
 if __name__=='__main__':main()
