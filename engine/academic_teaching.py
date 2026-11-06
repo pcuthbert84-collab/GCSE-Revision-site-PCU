@@ -88,7 +88,7 @@ HISTORY_TOPICS = {
     ),
 }
 def _normal(text):
-    return re.sub(r"\\s+", " ", (text or "").lower()).strip()
+    return re.sub(r"\s+", " ", (text or "").lower()).strip()
 
 def teaching_context(course, topic, area=""):
     """Return relevant guidance only; no whole-school data or unverified quote bank."""
