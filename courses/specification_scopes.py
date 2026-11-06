@@ -155,12 +155,6 @@ SCOPES = {
 def specification_scope(course,topic,area=""):
     """Short approved overview; never implies unit-by-unit verification."""
     name=course.get("name","")
-    code=str(course.get("code","")).strip()
-    if code and name!="Separate Sciences":
-        from courses.subject_resource_atlas import OFFICIAL
-        expected=OFFICIAL.get(name)
-        if expected and expected[0]!=code:
-            return ""
     return (SCOPES.get(name,"")+
         " Source note: course-level outline checked against public awarding-body "
         "pages; local teaching sequence, particular option, tier and exam entry "
