@@ -679,6 +679,7 @@ def main():
     subject=st.selectbox('Subject',sorted(COURSES),key='subject_choice')
     course=COURSES[subject]
     st.caption(f"{course.get('kind','Level 2')} · {course.get('board') or 'Board to confirm'} · {course.get('code') or 'Code to confirm'}")
+    if course.get('note'):st.caption(course['note'])
     groupmap=topic_groups(subject)
     area=st.selectbox('Choose a topic group',list(groupmap),key=f'group_{subject}')
     topics=groupmap[area]
