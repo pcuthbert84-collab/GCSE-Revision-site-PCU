@@ -160,8 +160,8 @@ PMT_TOPIC_PAGES = [
 def _science_topic_and_discipline(topic, area=""):
     """Normalise the Year 10/11 and science prefixes from the school map."""
     label=str(topic).strip()
-    label=re.sub(r"^Y1[01]\\s*[·:.-]\\s*", "", label, flags=re.I)
-    prefix=re.match(r"^(Biology|Chemistry|Physics):\\s*(.*)$",label,flags=re.I)
+    label=re.sub(r"^Y1[01]\s*[·:.-]\s*", "", label, flags=re.I)
+    prefix=re.match(r"^(Biology|Chemistry|Physics):\s*(.*)$",label,flags=re.I)
     selected=prefix.group(1).casefold() if prefix else ""
     if prefix:
         label=prefix.group(2).strip()
