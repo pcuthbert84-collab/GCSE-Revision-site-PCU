@@ -228,7 +228,7 @@ BUSINESS_TOPIC_LESSONS = {
 def business_topic_resources(subject, topic, code="4BS1"):
     if subject!="Business Studies" or code!="4BS1":
         return []
-    title=re.sub(r"^Y1[01]\\s*[·:.-]\\s*","",str(topic),flags=re.I)
+    title=re.sub(r"^Y1[01]\s*[·:.-]\s*","",str(topic),flags=re.I)
     key=re.sub(r"[^a-z0-9]+"," ",title.casefold()).strip()
     url=BUSINESS_TOPIC_LESSONS.get(key)
     if not url:
