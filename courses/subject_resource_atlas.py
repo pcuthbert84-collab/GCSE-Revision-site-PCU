@@ -164,6 +164,11 @@ def pmt_topic_resources(subject, topic, area=""):
              "atomic structure and periodic table":"atomic structure and the periodic table",
              "the rate and extent of chemical changes":"the rate and extent of chemical change"}
     key=aliases.get(key,key)
+    # 'Atomic structure' is both a Chemistry and Physics concept. Without a
+    # discipline selected, a source page from just one science is misleading.
+    if subject=="Combined Science" and key=="atomic structure" and not any(
+            x in str(area).casefold() for x in ("biology","chemistry","physics")):
+        return []
     candidates=[]
     for science,title,url in PMT_TOPIC_PAGES:
         standard=re.sub(r"[^a-z0-9]+"," ",title.casefold()).strip()
