@@ -22,7 +22,7 @@ jobs:
       - name: Install Excel creation dependencies
         run: python -m pip install openpyxl sympy
       - name: Generate department mapping workbook
-        run: python tools/create_subject_mapping_workbook.py
+        run: PYTHONPATH=. python tools/create_subject_mapping_workbook.py
       - name: Verify workbook format and formula integrity
         run: |
           python - <<'PY'
