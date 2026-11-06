@@ -1,0 +1,53 @@
+name: Build DBSJP Subject Mapping Workbook
+on:
+  push:
+    branches: [subject-leader-mapping-workbook]
+    paths:
+      - 'tools/create_subject_mapping_workbook.py'
+      - '.github/workflows/build-subject-mapping.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-workbook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Excel creation dependencies
+        run: python -m pip install openpyxl sympy
+      - name: Generate department mapping workbook
+        run: PYTHONPATH=. python tools/create_subject_mapping_workbook.py
+      - name: Verify workbook format and formula integrity
+        run: |
+          python - <<'PY'
+          from openpyxl import load_workbook
+          path='DBSJP_Subject_Leader_Mapping_Workbook.xlsx'
+          w=load_workbook(path)
+          assert w['DASHBOARD']['C6'].value
+          assert w['DASHBOARD']['D6'].value.startswith('=COUNTIF(')
+          assert w['COURSE CONFIRMATION']['A7'].value
+          assert len(w.sheetnames)>25
+          for sheet in w.worksheets[4:]:
+              assert sheet['A7'].value
+              assert sheet['T7'].value=='Not started'
+          print('Verified',len(w.sheetnames),'worksheets; editable approvals and formulas in place.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DBSJP-Subject-Leader-Mapping-Workbook
+          path: DBSJP_Subject_Leader_Mapping_Workbook.xlsx
+      - name: Commit workbook to mapping-only branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DBSJP_Subject_Leader_Mapping_Workbook.xlsx
+          if ! git diff --cached --quiet; then
+            git commit -m "Generate downloadable subject leader mapping workbook"
+            git push
+          fi
