@@ -206,6 +206,38 @@ def pmt_topic_resources(subject, topic, area=""):
              "url":url,"provider":"Physics & Maths Tutor","kind":"direct_topic",
              "note":"Verified AQA GCSE topic page. Check Foundation/Higher and Separate-only labels; not a copied course resource."}]
 
+# Individual, qualification-labelled 4BS1 lessons discovered on GCSE-ready.
+# Only title-exact matches become direct student links; the provider is
+# independent of Pearson, and its teaching facts are not automatically trusted.
+BUSINESS_TOPIC_LESSONS = {
+ "market research":"https://gcse-ready.org/learn/business/market-research/",
+ "break even":"https://gcse-ready.org/learn/business/break-even/",
+ "break even diagrams":"https://gcse-ready.org/learn/business/break-even-diagrams/",
+ "break even calculations changes and margin of safety":"https://gcse-ready.org/learn/business/break-even-calculations-changes-and-margin-of-safety/",
+ "motivation":"https://gcse-ready.org/learn/business/motivation/",
+ "motivation theories":"https://gcse-ready.org/learn/business/motivation-theories/",
+ "business location":"https://gcse-ready.org/learn/business/business-location/",
+ "factors of production":"https://gcse-ready.org/learn/business/factors-of-production/",
+ "exchange rates":"https://gcse-ready.org/learn/business/exchange-rates/",
+ "cash flow":"https://gcse-ready.org/learn/business/cash-flow/",
+ "completing a cash flow forecast":"https://gcse-ready.org/learn/business/completing-a-cash-flow-forecast/",
+ "sources of finance and interest":"https://gcse-ready.org/learn/business/sources-of-finance-and-interest/",
+ "business success and failure":"https://gcse-ready.org/learn/business/business-success-and-failure/",
+}
+
+def business_topic_resources(subject, topic, code="4BS1"):
+    if subject!="Business Studies" or code!="4BS1":
+        return []
+    title=re.sub(r"^Y1[01]\\s*[·:.-]\\s*","",str(topic),flags=re.I)
+    key=re.sub(r"[^a-z0-9]+"," ",title.casefold()).strip()
+    url=BUSINESS_TOPIC_LESSONS.get(key)
+    if not url:
+        return []
+    return [{"title":"GCSE-ready · "+title+" · lesson, examples and quick check",
+             "url":url,"provider":"GCSE-ready","kind":"direct_topic",
+             "note":"Exact 4BS1-linked lesson title, independent provider. Check accuracy with your school notes."}]
+
+
 def _normal(v):
     return re.sub(r"\s+"," ",str(v or "").casefold()).strip()
 
@@ -263,6 +295,7 @@ def topic_references(subject,topic,source="",area=""):
             "kind":"topic_reference",
             "note":"Relevant specification section or topic index, not a checked one-to-one lesson mapping."})
     direct=pmt_topic_resources(subject,topic,area)
+    direct+=business_topic_resources(subject,topic)
     return direct+[row for row in results if row["url"] not in {d["url"] for d in direct}]
 
 def metadata_for_ai(course,topic):
