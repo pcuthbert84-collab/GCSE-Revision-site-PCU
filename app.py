@@ -10,7 +10,8 @@ from courses.maths_4ma1 import SKILLS
 from engine.questions import make_question
 from engine.marking import mark
 from engine.ai import get_key, get_model, get_fallback_model, connection_test, list_available_models, AIUnavailable
-from engine.v4_ai import create_study,create_question,evaluate
+from engine.v4_ai import create_study,create_question,create_exam_question,evaluate
+from engine.exam_modes import exam_modes
 from engine.quality_store import (load as quality_load, save as quality_save, configured as quality_configured,
     password_valid, approve_rule, add_resource, active_rules, archive, validate_direct_url)
 from courses.verified_resources import topic_resources
@@ -18,12 +19,29 @@ from courses.corbett_catalogue import fetch_catalogue, automatic_resources, cand
 from engine.math_display import stacked_fractions
 from engine.learning_path import learning_checks, suggested_route
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.12',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.14',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
 h1,h2,h3{letter-spacing:-.02em}
 [data-testid="stVerticalBlockBorderWrapper"]{border-radius:14px}
+:root{--dbsjp-navy:#071D59;--dbsjp-red:#D50032;--dbsjp-light:#F4F6FA}
+h1,h2,h3{color:var(--dbsjp-navy);font-weight:700}
+[data-testid="stSidebar"]{background:var(--dbsjp-navy)}
+[data-testid="stSidebar"] label,[data-testid="stSidebar"] p,[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] small{color:#fff!important}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"]{opacity:.88}
+[data-testid="stSidebar"] [role="radiogroup"] label{border-radius:9px}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover{background:#152B6B}
+[data-testid="stSidebar"] hr{border-color:rgba(255,255,255,.23)}
+[data-testid="stSidebar"] .dbsjp-brand{background:#fff;border-radius:12px;padding:12px;margin:0 0 15px}
+[data-testid="stSidebar"] .dbsjp-brand .dbsjp-brand-copy strong,
+[data-testid="stSidebar"] .dbsjp-brand .dbsjp-brand-copy span,
+[data-testid="stSidebar"] .dbsjp-brand .dbsjp-brand-copy small{color:var(--dbsjp-navy)!important}
+[data-testid="stButton"] button[kind="primary"]{background:var(--dbsjp-red);border-color:var(--dbsjp-red);color:#fff;font-weight:650}
+[data-testid="stButton"] button[kind="primary"]:hover{background:#AD0028;border-color:#AD0028;color:#fff}
+[data-testid="stVerticalBlockBorderWrapper"]{border-color:#dce3ef}
+a{color:#0C357C}
 .dbsjp-brand{display:flex;align-items:center;gap:12px;padding:4px 0 18px}
 .dbsjp-brand-logo{width:62px;height:62px;object-fit:contain;background:#fff;border-radius:9px;padding:3px;flex-shrink:0}
 .dbsjp-brand-copy{display:flex;flex-direction:column;line-height:1.18}
@@ -222,7 +240,21 @@ def make_local_question(course,topic,difficulty):
         return {'kind':'guided','data':q,'prompt':q['prompt'],'max_marks':len(q.get('points',[]))}
     return None
 
-def new_question(course,area,topic,tier,difficulty):
+def new_question(course,area,topic,tier,difficulty,mode=None):
+    # Extended tasks must not silently degrade into a short question.
+    if mode and mode.get('id')!='short':
+        if not can_ai():
+            st.warning('Extended examination practice requires a configured Gemini key and available session quota.')
+            return None
+        try:
+            with st.spinner('Creating and validating an original examination-style task…'):
+                q=with_ai(create_exam_question,course,topic,area,mode,tier,difficulty,
+                    rules=context_rules(course,topic))
+            return {'kind':'ai','data':{**q,'_subject':course['name'],
+                '_topic':topic['title']},'prompt':q['prompt'],'max_marks':q['max_marks']}
+        except AIUnavailable as ex:
+            st.warning('Extended question was not produced: '+str(ex))
+            return None
     local=make_local_question(course,topic,difficulty)
     if can_ai():
         try:
@@ -287,12 +319,18 @@ def testing(course,area,topic,tier):
     context=(course['name'],area,topic['title'],tier)
     if st.session_state.question_key and st.session_state.question_key[:4]!=context:reset_q()
     if st.session_state.active_question is None:
+        modes=exam_modes(course,area,topic)
+        chosen_id=st.selectbox('Question format',[m['id'] for m in modes],
+            format_func=lambda x:next(m['label'] for m in modes if m['id']==x),
+            key='exam_format_selector')
+        chosen_mode=next(m for m in modes if m['id']==chosen_id)
+        st.caption(chosen_mode['description'])
         difficulty=st.select_slider('Difficulty',['Foundation','Standard','Challenge'],value=st.session_state.level,key='question_difficulty')
         st.write('Practise an original, examination-style task at a chosen difficulty. Submit a full answer, receive provisional feedback, and improve it on a second attempt.')
-        st.caption('These are original practice questions, not official past-paper questions. Current AI-generated questions are limited to 2–8 marks; official 16-mark essay simulation is not yet available.')
+        st.caption('Practice questions are original. Extended-writing marks and criteria are indicative, not official examiner judgements.')
         if not can_ai():st.caption('AI is currently unavailable or has reached this session’s cap. Prewritten questions will be offered where available.')
         if st.button('Generate a question',type='primary'):
-            q=new_question(course,area,topic,tier,difficulty)
+            q=new_question(course,area,topic,tier,difficulty,mode=chosen_mode)
             if q:
                 st.session_state.active_question=q;st.session_state.question_key=context+(difficulty,)
                 st.session_state.attempt_stage='first';st.rerun()
@@ -307,6 +345,8 @@ def testing(course,area,topic,tier):
     q=st.session_state.active_question
     st.caption(f"Original practice · {st.session_state.question_key[-1]} · {q['max_marks']} marks · {('AI-generated, provisional' if q['kind']=='ai' else 'Locally generated')}")
     st.markdown(stacked_fractions(q['prompt']))
+    if q['kind']=='ai' and q['data'].get('practice_note'):
+        st.info(q['data']['practice_note']+' Marks are provisional and require teacher moderation.')
     if st.session_state.attempt_stage=='first':
         st.text_area('Your full answer and working',key='first_text',height=180,placeholder='Show your method and your final answer. Alternative correct methods are welcome.')
         if st.button('Check my answer',type='primary',disabled=not st.session_state.first_text.strip()):
@@ -519,7 +559,7 @@ def main():
 </div>''',unsafe_allow_html=True)
         page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.12 • Academic teaching • Corbettmaths • Level 2')
+        st.caption('V4.14 • DBSJP • Learn + Exam practice')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
