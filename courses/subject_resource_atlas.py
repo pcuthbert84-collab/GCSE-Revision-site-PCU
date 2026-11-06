@@ -115,6 +115,69 @@ TOPIC_REFERENCES = [
   "https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/"),
 ]
 
+# Verified individual AQA GCSE science topic pages, traced from PMT's
+# published board-specific index, November 2026. Each page includes notes and
+# topic exercises; some exercises are separate-only and must be checked.
+PMT_TOPIC_PAGES = [
+ ("Biology","Cell biology","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/cell-biology/"),
+ ("Biology","Organisation","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/organisation/"),
+ ("Biology","Infection and response","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/infection-and-response/"),
+ ("Biology","Bioenergetics","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/bioenergetics/"),
+ ("Biology","Homeostasis and response","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/homeostasis-and-response/"),
+ ("Biology","Inheritance, variation and evolution","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/inheritance-variation-evolution/"),
+ ("Biology","Ecology","https://www.physicsandmathstutor.com/biology-revision/gcse-aqa/ecology/"),
+ ("Chemistry","Atomic structure and the periodic table","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/atomic-structure-and-periodic-table"),
+ ("Chemistry","Bonding, structure and properties of matter","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/bonding-structure-properties-of-matter/"),
+ ("Chemistry","Quantitative chemistry","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/quantitative-chemistry/"),
+ ("Chemistry","Chemical changes","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/chemical-changes/"),
+ ("Chemistry","Energy changes","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/energy-changes/"),
+ ("Chemistry","The rate and extent of chemical change","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/rate-and-extent-of-chemical-change/"),
+ ("Chemistry","Organic chemistry","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/organic-chemistry/"),
+ ("Chemistry","Chemical analysis","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/chemical-analysis/"),
+ ("Chemistry","Chemistry of the atmosphere","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/chemistry-of-atmosphere/"),
+ ("Chemistry","Using resources","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/using-resources/"),
+ ("Physics","Energy","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/energy/"),
+ ("Physics","Electricity","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/electricity/"),
+ ("Physics","Particle model of matter","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/particle-model-of-matter/"),
+ ("Physics","Atomic structure","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/atomic-structure/"),
+ ("Physics","Forces","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/forces/"),
+ ("Physics","Waves","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/waves/"),
+ ("Physics","Magnetism and electromagnetism","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/magnetism-and-electromagnetism/"),
+ ("Physics","Space physics","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/space-physics/"),
+]
+
+def pmt_topic_resources(subject, topic, area=""):
+    if subject not in ("Combined Science","Separate Sciences"):
+        return []
+    key=re.sub(r"[^a-z0-9]+"," ",str(topic).casefold()).strip()
+    aliases={"bonding structure and the properties of matter":"bonding structure and properties of matter",
+             "bonding":"bonding structure and properties of matter",
+             "magnetism":"magnetism and electromagnetism",
+             "particle model":"particle model of matter",
+             "atomic structure and periodic table":"atomic structure and the periodic table",
+             "the rate and extent of chemical changes":"the rate and extent of chemical change"}
+    key=aliases.get(key,key)
+    candidates=[]
+    for science,title,url in PMT_TOPIC_PAGES:
+        standard=re.sub(r"[^a-z0-9]+"," ",title.casefold()).strip()
+        if standard!=key:
+            continue
+        # If this is a science subject section, check its discipline. If the
+        # title is ambiguous and no science section exists, do not guess.
+        area_key=str(area).casefold()
+        known=[x for x in ("biology","chemistry","physics") if x in area_key]
+        if known and science.casefold() not in known:
+            continue
+        candidates.append((science,title,url))
+    if len(candidates)!=1:
+        return []
+    science,title,url=candidates[0]
+    if subject=="Combined Science" and science=="Physics" and title=="Space physics":
+        return [] # AQA Trilogy excludes the Separate-only space physics topic.
+    return [{"title":"PMT · "+science+" · "+title+" · notes, flashcards, topic questions",
+             "url":url,"provider":"Physics & Maths Tutor","kind":"direct_topic",
+             "note":"Verified AQA GCSE topic page. Check Foundation/Higher and Separate-only labels; not a copied course resource."}]
+
 def _normal(v):
     return re.sub(r"\s+"," ",str(v or "").casefold()).strip()
 
@@ -139,7 +202,7 @@ def directory_resources(subject):
          "kind":"directory","note":note}
         for title,url,note in DIRECTORIES.get(subject,[])]
 
-def topic_references(subject,topic,source=""):
+def topic_references(subject,topic,source="",area=""):
     """Narrow keyword matches only; title labelled *index*, not exact lesson."""
     text=_normal(topic)
     # A school topic's source may be an entire term: avoid matching every
@@ -152,7 +215,7 @@ def topic_references(subject,topic,source=""):
         results.append({"title":title,"url":url,"provider":title.split(" · ")[0],
             "kind":"topic_reference",
             "note":"Relevant specification section or topic index, not a checked one-to-one lesson mapping."})
-    return results
+    return pmt_topic_resources(subject,topic,area)+results
 
 def metadata_for_ai(course,topic):
     """Small safe source metadata, NOT webpage text or unverified learning facts."""
