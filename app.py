@@ -113,33 +113,67 @@ def show_resources(course,topic):
 
 
 def show_subject_library(course,topic,area=''):
-    """Clearly distinguish official specification from general revision catalogues."""
+    """Exact learning pages first; optional directories and specifications below."""
     official=qualification_reference(course)
     related=topic_references(course['name'],topic['title'],topic.get('source',''),area)
     directories=directory_resources(course['name'])
-    with st.expander('Official course specification and subject resource library'):
-        st.caption('These are external websites. A catalogue is not necessarily a direct lesson, and some providers offer paid options. Always use your DBSJP exam route and prescribed texts.')
+    # Prevent duplicate buttons when a direct topic page is also an index hit.
+    seen=set()
+    related=[item for item in related
+             if not (item['url'] in seen or seen.add(item['url']))]
+    direct=[item for item in related if item.get('kind')=='direct_topic']
+    other=[item for item in related if item.get('kind')!='direct_topic']
+    if direct:
+        st.markdown('#### Matched topic lessons and practice')
+        st.caption('Matched to this precise topic. Check provider content against your DBSJP lesson and tier.')
+        for item in direct:
+            st.link_button(item['title'],item['url'])
+            st.caption(item['note'])
+    else:
+        st.caption('No individually verified external lesson has been matched to this exact title yet. '
+                   'Try choosing a narrower skill, or use the resource collections below.')
+    with st.expander('Official specification and wider revision collections'):
+        st.caption('External resources may be copyrighted, subscription-based or written for a different '
+                   'UK GCSE route. A general directory is not a verified match to your exact syllabus point.')
         if official:
             st.link_button(official['title'],official['url'])
-            st.caption('Official awarding-body qualification page. Check modules, examination series, chosen units and subject options.')
+            st.caption('Official qualification overview, not confirmation of the school-selected unit, option or tier.')
         elif course['name']=='Separate Sciences':
-            st.info('AQA Separate Sciences comprise three qualifications (8461 Biology, 8462 Chemistry, 8463 Physics). Confirm the subject and tier.')
+            st.info('AQA Separate Sciences have three independent specifications and tiers.')
             for reference in SEPARATE_SCIENCE_SPECS:
                 st.link_button(reference['title'],reference['url'])
         else:
-            st.info('An exact official specification link is not yet confirmed for this course code; ask your teacher before relying on an external syllabus.')
-        if related:
-            st.markdown('**Relevant topic sections or indexed topic collections**')
-            for item in related:
+            st.caption('No independently checked specification link for this exact qualification code.')
+        if other:
+            st.markdown('**Relevant specification sections and topic indexes**')
+            for item in other:
                 st.link_button(item['title'],item['url'])
                 st.caption(item['note'])
         if directories:
-            st.markdown('**More revision collections for this subject**')
+            st.markdown('**General subject revision collections**')
             for item in directories:
                 st.link_button(item['title'],item['url'])
                 st.caption(item['note'])
-        if not related and not directories:
-            st.caption('No additional public topic catalogue has yet been matched reliably to this exact course. The official qualification link above remains the starting point.')
+    options=([official] if official else [])+related+directories
+    if options:
+        with st.expander('Report a broken, incorrect or misleading external link'):
+            choices={str(i)+'. '+item['title']:item for i,item in enumerate(options,1)}
+            selection=st.selectbox('Resource to report',list(choices),
+                key='atlas_report_pick_'+str(abs(hash((course['name'],topic['title'])))))
+            issue=st.text_area('What needs correcting?',max_chars=700,
+                placeholder='For example: this link is for a different qualification or no longer works.',
+                key='atlas_report_note_'+str(abs(hash((course['name'],topic['title'])))))
+            if st.button('Add resource report for academic review',
+                         disabled=not issue.strip(),
+                         key='atlas_report_submit_'+str(abs(hash((course['name'],topic['title']))))):
+                item=choices[selection]
+                st.session_state.reported_issues.append({
+                    'subject':course['name'],'topic':topic['title'],
+                    'question':'External resource: '+item['title']+' '+item['url'],
+                    'issue':issue.strip(),'question_source':'subject_resource_atlas',
+                    'first_feedback':''})
+                st.success('Report saved in this browser session. Export it from Testing issues.')
+
 
 
 def reset_q():

@@ -25,7 +25,28 @@ class ExamModeTests(unittest.TestCase):
         self.assertNotIn("literature_essay",ids)
     def test_literary_essay(self):
         ids=[m["id"] for m in exam_modes(LITERATURE,"Drama",{"title":"Romeo and Juliet"})]
-        self.assertIn("literature_essay",ids)
+        self.assertIn("literature_workshop",ids)
+        self.assertNotIn("literature_modern_prose",ids)
+    def test_literature_paper_one_formats_and_marks(self):
+        prose=exam_modes(LITERATURE,"Year 11 Paper 1 Section C",
+                         {"title":"Of Mice and Men"})
+        self.assertEqual(next(m["marks"] for m in prose
+                         if m["id"]=="literature_modern_prose"),40)
+        anthology=exam_modes(LITERATURE,"Paper 1 Section A/B",
+                            {"title":"Anthology poetry comparison"})
+        self.assertIn("literature_anthology",[m["id"] for m in anthology])
+        self.assertIn("literature_unseen",[m["id"] for m in
+                          exam_modes(LITERATURE,"Paper 1",{"title":"Unseen poetry"})])
+    def test_misfiled_school_english_topics_are_hidden(self):
+        from courses.v4_catalog import topic_groups
+        for group,items in topic_groups("English Literature").items():
+            self.assertFalse(any("Non-fiction texts (reading)" in x["title"] for x in items))
+        for group,items in topic_groups("English Language").items():
+            self.assertFalse(any("Literature NEA" in x["title"] for x in items))
+    def test_wrong_code_does_not_gain_other_spec_scope(self):
+        from courses.specification_scopes import specification_scope
+        self.assertEqual(specification_scope({"name":"History","code":"4EA1"},
+                                            {"title":"Germany"}),"")
     def test_transactional_writing_not_official_allocation(self):
         modes=exam_modes(LANGUAGE,"English Language",{"title":"Transactional writing"})
         chosen=next(m for m in modes if m["id"]=="language_writing")

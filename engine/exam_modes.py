@@ -36,15 +36,26 @@ def exam_modes(course, area, topic):
     if name=="English Literature" and course.get("code")=="4ET1":
         if "unseen" in context and ("poem" in context or "poetry" in context):
             options.append({
-                "id":"literature_unseen","label":"Unseen poetry analysis (20 marks)",
+                "id":"literature_unseen","label":"Unseen poetry analysis (20 practice marks)",
                 "marks":20,"type":"literary analysis of original poem",
-                "description":"Uses a short clearly ORIGINAL poem provided with the question. Indicative rubric."})
-        elif any(k in context for k in ("romeo and juliet","mice and men","inspector calls",
-                                      "macbeth","modern prose","literary heritage","modern drama")):
+                "description":"Original unseen poem supplied in full. Practice aligned to the 4ET1 poetry skill; marking is indicative."})
+        if "anthology" in context and ("poetry" in context or "poem" in context):
             options.append({
-                "id":"literature_essay","label":"Literary analysis essay (30 marks)",
-                "marks":30,"type":"extended literature argument",
-                "description":"Original essay task for a named text. Route/assessment component to be confirmed by teacher."})
+                "id":"literature_anthology","label":"Anthology poetry analysis (30 practice marks)",
+                "marks":30,"type":"analysis of selected anthology poetry",
+                "description":"Requires the school-selected anthology poem. No invented quotation and not an official mark scheme."})
+        if any(k in context for k in ("mice and men","modern prose",
+                                    "to kill a mockingbird","things fall apart","the whale rider")):
+            options.append({
+                "id":"literature_modern_prose","label":"Modern prose analysis (40 practice marks)",
+                "marks":40,"type":"extended modern prose interpretation",
+                "description":"4ET1 Component 1 Section C-style original practice. Only relevant if this is a taught set text."})
+        if any(k in context for k in ("romeo and juliet","inspector calls",
+                                     "macbeth","literary heritage","modern drama")):
+            options.append({
+                "id":"literature_workshop","label":"Literature argument workshop (30 practice points)",
+                "marks":30,"type":"original literary argument workshop",
+                "description":"An illustrative 30-point learning exercise, NOT a 4ET1 paper or coursework mark allocation."})
     if name=="English Language" and course.get("code")=="4EA1":
         if any(k in context for k in ("transactional","letter","article","speech","writing")):
             options.append({
@@ -76,12 +87,21 @@ def exam_instruction(mode,course,topic):
             "include all lines in prompt, then ask how the writer uses language and structure "
             "to convey a meaning. Do NOT quote a published poem. Evaluate supported "
             "interpretation and technique analysis. Marks: 20 provisional."),
-        "literature_essay":(
-            "Only ask about the exact named text if supported by the supplied topic. "
-            "Ask an original extended analysis of character or theme, allowing varied "
-            "interpretations, relevant evidence and writer's choices. Do not invent or "
-            "supply quotations, scenes or historical context. Marking is indicative, "
-            "not a reproduction of official levels. Marks: 30."),
+        "literature_anthology":(
+            "Only use an anthology poem CONFIRMED by the selected school topic; "
+            "never fabricate a quotation, poet or poem title. If no precise poem is "
+            "confirmed, ask a theoretical, non-extract-based analysis exercise "
+            "and state clearly that it is a classroom workshop. Marks: 30 indicative."),
+        "literature_modern_prose":(
+            "Create an original 4ET1-style analytical question on the named modern "
+            "prose text, supported by what the user selected. Assess understanding, "
+            "interpretation, analysis of writer methods and coherent argument. "
+            "Never invent quotations or precise chapter references. Marks: 40 indicative."),
+        "literature_workshop":(
+            "Provide an ORIGINAL extended literary argument workshop on the named "
+            "text, including defensible alternative interpretations, writer choices "
+            "and a developed paragraph model without invented quotations. "
+            "30-point classroom PRACTICE scale only, not an official 4ET1 grade."),
         "language_writing":(
             "Give a clear original real-world purpose, audience and format (e.g. "
             "a formal letter or speech) for transactional writing. Evaluate clarity, "
@@ -96,7 +116,7 @@ def exam_instruction(mode,course,topic):
         "positive whole-number credit values summing to "+str(marks)+". "
         "Make criteria sufficiently distinct, measurable and useful for developmental "
         "feedback; the rubric is PROVISIONAL and NOT an official published mark scheme. "
-        "For 16 mark answers, give developed evidence-based model analysis; for 20/30 mark "
+        "For 16 mark answers, give developed evidence-based model analysis; for 20/30/40 mark "
         "tasks, give a strong but concise modelled outline or original specimen. "
         "Return ONLY JSON: prompt:string, hint:string, model_answer:string, "
         "max_marks:integer, marking_points:array, question_type:string, uncertainty:string. "
