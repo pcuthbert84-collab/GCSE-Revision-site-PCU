@@ -1,6 +1,7 @@
 """On-demand AI: structured original teaching and questions. No API calls until user action."""
 from engine.ai import request_json, AIUnavailable
 from engine.academic_teaching import teaching_context
+from engine.exam_modes import exam_instruction
 import re
 
 def safe_source(text):
@@ -113,7 +114,7 @@ def create_study(course,topic,area,tier='Higher',difficulty='Standard',compact=F
 COMPACT_QUESTION_RULES = COMMON_ACADEMIC_RULES + """ TASK: Write ONE short, original, self-contained question on the EXACT selected school topic and tier. Keep the question 1-3 sentences. Use a small, objectively defensible rubric, with a concise model answer. Include all required stimulus in the question; never invent official exam requirements, sources or quotations. Allow alternative valid answers and methods. Return JSON ONLY with: prompt:string, hint:string (a meaningful clue without the answer), model_answer:string, max_marks:integer (2 to 4), marking_points:array of objects {criterion:string,credit:integer}; credits must add up to max_marks. No additional fields are required. """
 
 
-def _validate_question(r):
+def _validate_question(r, max_allowed=8):
     """Check essential student-facing content and the marking rubric.
 
     'reference_method' is optional because many essays, language and BTEC
@@ -130,8 +131,8 @@ def _validate_question(r):
         maximum = r['max_marks']
     except (KeyError, TypeError):
         return 'Generated question is missing a marking rubric.'
-    if type(maximum) is not int or not 2 <= maximum <= 8:
-        return 'Generated question must have between 2 and 8 whole marks.'
+    if type(maximum) is not int or not 2 <= maximum <= max_allowed:
+        return 'Generated question has an invalid maximum mark allocation.'
     if not isinstance(points, list) or not points:
         return 'Generated question has no marking criteria.'
     if any(not isinstance(p, dict) or not isinstance(p.get('criterion'), str)
@@ -145,8 +146,8 @@ def _validate_question(r):
     return None
 
 
-def _complete_question(r):
-    error = _validate_question(r)
+def _complete_question(r, max_allowed=8):
+    error = _validate_question(r, max_allowed=max_allowed)
     if error:
         raise AIUnavailable(error)
     result = dict(r)
@@ -183,6 +184,32 @@ def create_question(course,topic,area,tier='Higher',difficulty='Standard',rules=
     except AIUnavailable as second_error:
         raise AIUnavailable('Gemini could not produce a complete, consistently marked question after a compact retry. '
                             f'Last issue: {second_error}') from second_error
+
+def create_exam_question(course,topic,area,mode,tier='As taught',difficulty='Standard',rules=None):
+    """Original extended-practice question with an exact, checked mark total.
+
+    Never silently fall back to a different format or mislabel a 4-mark
+    question as a 16-mark essay.
+    """
+    if not isinstance(mode,dict) or mode.get('marks') not in (6,8,16,20,30):
+        raise AIUnavailable('Selected exam-practice format is unavailable.')
+    instruction=exam_instruction(mode,course,topic)
+    if not instruction:
+        raise AIUnavailable('No suitable extended format for this topic.')
+    payload=_payload(course,topic,area,tier,difficulty)
+    payload['requested_exam_mode']=mode['id']
+    payload['requested_max_marks']=mode['marks']
+    raw=request_json(COMMON_ACADEMIC_RULES+MATH_DISPLAY_RULES+
+        instruction+_approved_rule_appendix(rules),payload,max_output_tokens=4096)
+    result=_complete_question(raw,max_allowed=30)
+    if result['max_marks']!=mode['marks'] or len(result['marking_points'])!=4:
+        raise AIUnavailable('Gemini did not honour the chosen exam format and marking total. Nothing was graded; please retry.')
+    if mode['id']=='literature_unseen' and 'original' not in result['prompt'].lower():
+        raise AIUnavailable('An unseen poetry task must clearly identify its supplied poem as original.')
+    result['exam_mode']=mode['id']
+    result['practice_note']=mode['description']
+    return result
+
 
 def evaluate(q,answer,second=False,rules=None):
     r=request_json(FEEDBACK_RULES+_approved_rule_appendix(rules),dict(approved_teaching_approach=teaching_context({'name':q.get('_subject','')},{'title':q.get('_topic','')},''),question=q['prompt'],max_marks=q['max_marks'],marking_points=q['marking_points'],
