@@ -80,7 +80,8 @@ DIRECTORIES = {
    ("PMT · AQA Chemistry","https://www.physicsandmathstutor.com/chemistry-revision/gcse-aqa/","AQA Chemistry, check 8462"),
    ("PMT · AQA Physics","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/","AQA Physics, check 8463"),
  ],
- "BTEC Information Technology":[("Pearson · BTEC IT student-book units","https://qualifications.pearson.com/en/qualifications/btec-international-level-2/student-book-information-technology.html","Unit listing and optional paid student book")],
+ "BTEC Information Technology":[("Pearson · BTEC IT student-book units","https://qualifications.pearson.com/en/qualifications/btec-international-level-2/student-book-information-technology.html","Unit listing and optional paid student book"),
+   ("MDN · Web development learning pathway","https://developer.mozilla.org/en-US/docs/Learn_web_development","Free HTML, CSS and web development skills with practice tasks; not a Pearson assessed unit")],
 }
 # Subject-specific verified official sections: only when a recognisable
 # topic token is present in the title/teaching-map snippet. These are
@@ -101,6 +102,12 @@ TOPIC_REFERENCES = [
  ("Drama",("understanding drama","dramatic techniques","analysing performances"),
   "AQA 8261 · Understanding drama",
   "https://www.aqa.org.uk/subjects/drama/gcse/drama-8261/specification/subject-content/understanding-drama"),
+ ("BTEC Information Technology",("website development","html","web development"),
+  "MDN · Website development: core tutorials and practice",
+  "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core"),
+ ("Computer Science",("programming in python","python programming","algorithms"),
+  "Oak National Academy · GCSE computing lessons and practical projects",
+  "https://www.thenational.academy/teachers/programmes/computing-secondary-aqa/units?threads=programming"),
  ("Psychology",("memory","perception","development","research methods","social influence"),
   "AQA 8182 · Subject and paper overview",
   "https://www.aqa.org.uk/subjects/psychology/gcse/psychology-8182/specification/specification-at-a-glance"),
@@ -233,6 +240,6 @@ def metadata_for_ai(course,topic):
         return ""
     return ("Official course reference only (not fetched by model): "
         +entry["title"]+"; "+entry["url"]
-        +". Source status: qualified course code confirmed; precise DBSJP "
+        +". Source status: code recorded in DBSJP course catalogue and subject-level awarding-body page identified; precise DBSJP "
         "taught subtopic, unit option and examination component not yet audited. "
         "Do not claim to have read the external website or cite its text.")
