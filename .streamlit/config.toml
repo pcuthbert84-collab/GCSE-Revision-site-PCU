@@ -1,0 +1,11 @@
+# DBSJP Revision Hub school brand palette (derived from supplied logo)
+[theme]
+base = "light"
+primaryColor = "#D50032"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"
+textColor = "#071D59"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
