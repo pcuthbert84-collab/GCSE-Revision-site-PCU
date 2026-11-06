@@ -181,6 +181,15 @@ def pmt_topic_resources(subject, topic, area=""):
 def _normal(v):
     return re.sub(r"\s+"," ",str(v or "").casefold()).strip()
 
+SEPARATE_SCIENCE_SPECS = [
+    {"title":"AQA Biology · 8461 official specification",
+     "url":"https://www.aqa.org.uk/subjects/biology/gcse/biology-8461/specification"},
+    {"title":"AQA Chemistry · 8462 official specification",
+     "url":"https://www.aqa.org.uk/subjects/chemistry/gcse/chemistry-8462/specification"},
+    {"title":"AQA Physics · 8463 official specification",
+     "url":"https://www.aqa.org.uk/subjects/physics/gcse/physics-8463/specification"},
+]
+
 def qualification_reference(course):
     """Exact code match only, except the separately identified three AQA sciences."""
     name=course.get("name","")
