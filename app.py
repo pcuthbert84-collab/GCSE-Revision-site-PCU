@@ -17,12 +17,18 @@ from courses.verified_resources import topic_resources
 from courses.corbett_catalogue import fetch_catalogue, automatic_resources, candidate_matches, resources_for_entry, normalize
 from engine.math_display import stacked_fractions
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.10',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.12',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
 h1,h2,h3{letter-spacing:-.02em}
 [data-testid="stVerticalBlockBorderWrapper"]{border-radius:14px}
+.dbsjp-brand{display:flex;align-items:center;gap:12px;padding:4px 0 18px}
+.dbsjp-brand-logo{width:62px;height:62px;object-fit:contain;background:#fff;border-radius:9px;padding:3px;flex-shrink:0}
+.dbsjp-brand-copy{display:flex;flex-direction:column;line-height:1.18}
+.dbsjp-brand-copy strong{font-size:1.1rem;color:inherit;letter-spacing:.025em}
+.dbsjp-brand-copy span{font-size:1.0rem;font-weight:600}
+.dbsjp-brand-copy small{font-size:.72rem;margin-top:5px;opacity:.8}
 </style>''',unsafe_allow_html=True)
 
 # Limits are session-level safeguards only. Provider-side free-tier quota / no paid billing
@@ -461,10 +467,16 @@ def academic_quality_manager():
 
 def main():
     with st.sidebar:
-        st.title('📚 DBSJP Revision Hub')
+        st.markdown('''<div class="dbsjp-brand" aria-label="Dubai British School Jumeirah Park">
+  <img class="dbsjp-brand-logo" src="https://dubailocal.ae/assets/logo/1682999938_b3e76ff53712956525cc.png"
+       alt="Dubai British School Jumeirah Park emblem" loading="eager"
+       onerror="this.style.display='none'">
+  <div class="dbsjp-brand-copy"><strong>DBSJP</strong><span>Revision Hub</span>
+  <small>Enjoy · Aspire · Achieve</small></div>
+</div>''',unsafe_allow_html=True)
         page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.10 • Corbettmaths catalogue • Level 2 only')
+        st.caption('V4.12 • Academic teaching • Corbettmaths • Level 2')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
