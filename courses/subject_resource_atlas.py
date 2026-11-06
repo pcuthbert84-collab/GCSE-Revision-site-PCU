@@ -157,10 +157,25 @@ PMT_TOPIC_PAGES = [
  ("Physics","Space physics","https://www.physicsandmathstutor.com/physics-revision/gcse-aqa/space-physics/"),
 ]
 
+def _science_topic_and_discipline(topic, area=""):
+    """Normalise the Year 10/11 and science prefixes from the school map."""
+    label=str(topic).strip()
+    label=re.sub(r"^Y1[01]\\s*[·:.-]\\s*", "", label, flags=re.I)
+    prefix=re.match(r"^(Biology|Chemistry|Physics):\\s*(.*)$",label,flags=re.I)
+    selected=prefix.group(1).casefold() if prefix else ""
+    if prefix:
+        label=prefix.group(2).strip()
+    area_sci=next((k for k in ("biology","chemistry","physics") if k in str(area).casefold()),"")
+    if selected and area_sci and selected!=area_sci:
+        return "", ""
+    return label, selected or area_sci
+
+
 def pmt_topic_resources(subject, topic, area=""):
     if subject not in ("Combined Science","Separate Sciences"):
         return []
-    key=re.sub(r"[^a-z0-9]+"," ",str(topic).casefold()).strip()
+    label,science_hint=_science_topic_and_discipline(topic,area)
+    key=re.sub(r"[^a-z0-9]+"," ",label.casefold()).strip()
     aliases={"bonding structure and the properties of matter":"bonding structure and properties of matter",
              "bonding":"bonding structure and properties of matter",
              "magnetism":"magnetism and electromagnetism",
@@ -170,8 +185,7 @@ def pmt_topic_resources(subject, topic, area=""):
     key=aliases.get(key,key)
     # 'Atomic structure' is both a Chemistry and Physics concept. Without a
     # discipline selected, a source page from just one science is misleading.
-    if key=="atomic structure" and not any(
-            x in str(area).casefold() for x in ("biology","chemistry","physics")):
+    if key=="atomic structure" and not science_hint:
         return []
     candidates=[]
     for science,title,url in PMT_TOPIC_PAGES:
@@ -180,9 +194,7 @@ def pmt_topic_resources(subject, topic, area=""):
             continue
         # If this is a science subject section, check its discipline. If the
         # title is ambiguous and no science section exists, do not guess.
-        area_key=str(area).casefold()
-        known=[x for x in ("biology","chemistry","physics") if x in area_key]
-        if known and science.casefold() not in known:
+        if science_hint and science.casefold()!=science_hint:
             continue
         candidates.append((science,title,url))
     if len(candidates)!=1:
