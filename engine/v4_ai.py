@@ -36,6 +36,14 @@ QUESTION_RULES=COMMON_ACADEMIC_RULES+''' TASK: Write ONE original, self-containe
 
 FEEDBACK_RULES=COMMON_ACADEMIC_RULES+''' TASK: Evaluate a learner's COMPLETE answer against the supplied ORIGINAL question and provisional rubric, not the wording of the model answer. All mathematical lines must be checked for validity where possible. Treat algebraically equivalent expressions, correct alternative workings, reordered roots, fractions, valid scientific synonyms and different defensible interpretations fairly. Do NOT invent reasoning the learner did not provide. Where their answer is mathematically correct by an alternative method, DO NOT penalise the different method. Where some steps are valid but final answer is incorrect, recognise demonstrated steps for supported method credit. For humanities/literature, consider accurate evidence and reasoned alternatives; distinguish a defensible interpretation from an unsupported assertion. Avoid keyword-only grading. If answer interpretation or rubric application is uncertain, set needs_review=true, confidence=low, and do not assert an incorrect verdict. First feedback MUST not reveal the complete solution, exact answer, or copy the mark scheme: instead give specific strengths and one actionable non-answer-leaking clue. Marks are indicative practice marks, not examiner-awarded. JSON only: indicative_mark:integer, strength:string, next_step:string, correct_independently:boolean, needs_review:boolean, confidence:string ('low'|'medium'|'high'), reason:string.'''
 
+def _approved_rule_appendix(rules):
+    if not rules: return ''
+    # ONLY admin-approved rules from the private quality store are accepted here.
+    # Each line is scoped by application code before it reaches this function.
+    lines=[str(rule).strip()[:1200] for rule in rules[:12] if str(rule).strip()]
+    return '\nADMIN-APPROVED ACADEMIC CORRECTIONS (apply where relevant; do not override mathematical facts or official specification):\n' + '\n'.join(f'{i}. {rule}' for i,rule in enumerate(lines,1)) if lines else ''
+
+
 def _is_transient_failure(error):
     message=str(error)
     return any(fragment in message for fragment in ('HTTP 500','HTTP 502','HTTP 503','HTTP 504','timed out'))
@@ -71,20 +79,20 @@ def _study_validation(r):
         return 'Essential knowledge was too vague to be useful.'
     return None
 
-def create_study(course,topic,area,tier='Higher',difficulty='Standard',compact=False):
+def create_study(course,topic,area,tier='Higher',difficulty='Standard',compact=False,rules=None):
     payload=_payload(course,topic,area,tier,difficulty)
     if compact:
         # A smaller output can work when a longer generation hits upstream 503.
-        raw=request_json(MINI_STUDY_RULES,payload,max_output_tokens=2048)
+        raw=request_json(MINI_STUDY_RULES+_approved_rule_appendix(rules),payload,max_output_tokens=2048)
         return _normalize_mini_study(raw,topic)
     try:
-        r=request_json(COMPACT_STUDY_RULES,payload,max_output_tokens=3072)
+        r=request_json(COMPACT_STUDY_RULES+_approved_rule_appendix(rules),payload,max_output_tokens=3072)
     except AIUnavailable as exc:
         if not _is_transient_failure(exc):
             raise
         # One extra, smaller request only after all standard transient retries fail.
         try:
-            raw=request_json(MINI_STUDY_RULES,payload,max_output_tokens=2048)
+            raw=request_json(MINI_STUDY_RULES+_approved_rule_appendix(rules),payload,max_output_tokens=2048)
             return _normalize_mini_study(raw,topic)
         except AIUnavailable as smaller_exc:
             if _is_transient_failure(smaller_exc):
@@ -95,8 +103,8 @@ def create_study(course,topic,area,tier='Higher',difficulty='Standard',compact=F
     r.setdefault('uncertainty','')
     return r
 
-def create_question(course,topic,area,tier='Higher',difficulty='Standard'):
-    r=request_json(QUESTION_RULES,_payload(course,topic,area,tier,difficulty))
+def create_question(course,topic,area,tier='Higher',difficulty='Standard',rules=None):
+    r=request_json(QUESTION_RULES+_approved_rule_appendix(rules),_payload(course,topic,area,tier,difficulty))
     required=['prompt','model_answer','hint','reference_method']
     if not all(isinstance(r.get(k),str) and len(r[k])>8 for k in required):raise AIUnavailable('Question was incomplete.')
     try:points=r['marking_points'];maximum=int(r['max_marks'])
@@ -106,8 +114,8 @@ def create_question(course,topic,area,tier='Higher',difficulty='Standard'):
     if len(r['prompt'])>3000 or len(r['model_answer'])>3500:raise AIUnavailable('Question format exceeded limits.')
     return r
 
-def evaluate(q,answer,second=False):
-    r=request_json(FEEDBACK_RULES,dict(question=q['prompt'],max_marks=q['max_marks'],marking_points=q['marking_points'],
+def evaluate(q,answer,second=False,rules=None):
+    r=request_json(FEEDBACK_RULES+_approved_rule_appendix(rules),dict(question=q['prompt'],max_marks=q['max_marks'],marking_points=q['marking_points'],
       reference_solution=q['model_answer'],student_work=answer,attempt='second' if second else 'first'))
     if not isinstance(r.get('indicative_mark'),int) or not 0<=r['indicative_mark']<=q['max_marks'] or not all(isinstance(r.get(k),str) for k in ['strength','next_step','confidence']):
         raise AIUnavailable('Feedback could not be validated; no mark was given.')

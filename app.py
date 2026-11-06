@@ -1,9 +1,8 @@
-"""DBSJP Revision Hub V4: content-first subject practice with optional free-tier Gemini.
+"""DBSJP Revision Hub V4.6: content-first subject practice with optional free-tier Gemini.
 No student accounts, progress database, permanent question bank or paid endpoints.
 """
 import secrets
 import json
-from urllib.parse import quote
 import streamlit as st
 from courses.v4_catalog import COURSES, topic_groups
 from courses.revision_content import get_content
@@ -12,8 +11,11 @@ from engine.questions import make_question
 from engine.marking import mark
 from engine.ai import get_key, get_model, get_fallback_model, connection_test, list_available_models, AIUnavailable
 from engine.v4_ai import create_study,create_question,evaluate
+from engine.quality_store import (load as quality_load, save as quality_save, configured as quality_configured,
+    password_valid, approve_rule, add_resource, active_rules, archive, validate_direct_url)
+from courses.verified_resources import topic_resources
 
-st.set_page_config(page_title='DBSJP Revision Hub | V4.2',page_icon='📚',layout='wide')
+st.set_page_config(page_title='DBSJP Revision Hub | V4.6',page_icon='📚',layout='wide')
 st.markdown('''<style>
 .block-container{max-width:1090px;padding-top:1.8rem;padding-bottom:3rem}
 [data-testid="stSidebar"]{min-width:260px}
@@ -26,7 +28,7 @@ h1,h2,h3{letter-spacing:-.02em}
 MAX_AI_CALLS_PER_SESSION=65
 for name,default in {'ai_calls':0,'notes_cache':{},'active_question':None,'attempt_stage':'new',
                      'first_text':'','retry_text':'','first_result':None,'second_result':None,
-                     'attempt_summary':[],'reported_issues':[],'question_key':None,'level':'Standard','start_id':0}.items():
+                     'attempt_summary':[],'reported_issues':[],'question_key':None,'level':'Standard','start_id':0,'admin_authorised':False}.items():
     if name not in st.session_state:st.session_state[name]=default
 
 def can_ai():return bool(get_key()) and st.session_state.ai_calls<MAX_AI_CALLS_PER_SESSION
@@ -35,6 +37,38 @@ def with_ai(func,*args,**kwargs):
     if not can_ai():raise AIUnavailable('Gemini key missing or this browser session has reached its AI-call safety cap.')
     st.session_state.ai_calls+=1
     return func(*args,**kwargs)
+
+def read_quality():
+    try:
+        data,sha,durable=quality_load()
+        return data,sha,durable
+    except (RuntimeError,ValueError,KeyError) as exc:
+        st.warning('Approved quality data is temporarily unavailable: '+str(exc))
+        return {'rules':[], 'resources':[], 'audit':[]},None,False
+
+
+def context_rules(course,topic):
+    data,_,_=read_quality()
+    return active_rules(data,course['name'],topic['title'])
+
+
+def show_resources(course,topic):
+    st.divider()
+    st.markdown('#### Free resources for this exact topic')
+    data,_,_=read_quality()
+    items=topic_resources(data,course['name'],topic['title'])
+    if not items:
+        st.info('No direct resource link has been verified for this exact topic yet. We will not show a generic homepage or invented link. An administrator can approve one in Academic Quality Manager.')
+        return
+    for item in items:
+        st.link_button(item['title'],item['url'])
+        st.caption(item.get('provider','Approved provider')+' · direct topic resource, not necessarily written for this exact examination board')
+    with st.expander('Report an incorrect or broken revision link'):
+        link_note=st.text_area('Which link is wrong, and why?',key='resource_issue_'+str(abs(hash((course['name'],topic['title'])))))
+        if st.button('Add resource issue to review list',disabled=not link_note.strip(),key='report_resource_'+str(abs(hash((course['name'],topic['title']))))):
+            st.session_state.reported_issues.append({'subject':course['name'],'topic':topic['title'],'question':'Resource links: '+', '.join(item['url'] for item in items),'issue':link_note,'question_source':'revision link','first_feedback':''})
+            st.success('Resource issue added to Testing issues for administrator review.')
+
 
 def reset_q():
     for k,v in {'active_question':None,'attempt_stage':'new','first_text':'','retry_text':'',
@@ -92,7 +126,7 @@ def revise(course,area,topic,tier):
         if can_ai() and st.button('Create a more detailed revision guide',key='upgrade_notes'):
             try:
                 with st.spinner('Preparing a topic-specific explanation…'):
-                    st.session_state.notes_cache[cached_key]=with_ai(create_study,course,topic,area,tier)
+                    st.session_state.notes_cache[cached_key]=with_ai(create_study,course,topic,area,tier,rules=context_rules(course,topic))
                 st.rerun()
             except AIUnavailable as ex:st.warning(str(ex))
     else:
@@ -105,20 +139,18 @@ def revise(course,area,topic,tier):
             if st.button('Generate revision guide',type='primary',key='create_notes'):
                 try:
                     with st.spinner('Preparing a revision explanation…'):
-                        st.session_state.notes_cache[cached_key]=with_ai(create_study,course,topic,area,tier)
+                        st.session_state.notes_cache[cached_key]=with_ai(create_study,course,topic,area,tier,rules=context_rules(course,topic))
                     st.rerun()
                 except AIUnavailable as ex:st.warning(str(ex))
         else:
             st.warning('A full explanation for this topic is not prewritten. Add the free Gemini API key in Streamlit Secrets to generate it, or use the original school course outline above.')
-    st.divider()
-    st.markdown('#### Free resources')
-    if course.get('board','').startswith('AQA'):
-        st.link_button('Browse AQA subject materials','https://www.aqa.org.uk/subjects')
-    elif 'Pearson' in str(course.get('board','')):
-        st.link_button('Browse Pearson qualifications','https://qualifications.pearson.com/en/qualifications.html')
-    st.link_button('BBC Bitesize GCSE','https://www.bbc.co.uk/bitesize/levels/z98jmp3')
-    st.link_button('Search free topic explanations', 'https://www.google.com/search?q='+quote(course['name']+' '+topic['title']+' GCSE revision'))
-    st.caption('General resource entry points until each external resource is manually reviewed for syllabus accuracy.')
+    show_resources(course,topic)
+    with st.expander('Report an inaccurate revision explanation'):
+        guide_note=st.text_area('What should be corrected?',key='guide_issue_'+str(abs(hash((course['name'],topic['title'])))))
+        if st.button('Add revision issue to review list',disabled=not guide_note.strip(),key='report_guide_'+str(abs(hash((course['name'],topic['title']))))):
+            st.session_state.reported_issues.append({'subject':course['name'],'topic':topic['title'],
+                  'question':'Revision guide: '+topic['title'],'issue':guide_note,'question_source':'revision notes','first_feedback':''})
+            st.success('Revision issue added to Testing issues for administrator review.')
 
 def make_local_question(course,topic,difficulty):
     sid=same_topic_local(course['name'],topic['title'])
@@ -137,8 +169,8 @@ def new_question(course,area,topic,tier,difficulty):
     if can_ai():
         try:
             with st.spinner('Creating and checking a new question…'):
-                q=with_ai(create_question,course,topic,area,tier,difficulty)
-            return {'kind':'ai','data':q,'prompt':q['prompt'],'max_marks':q['max_marks']}
+                q=with_ai(create_question,course,topic,area,tier,difficulty,rules=context_rules(course,topic))
+            return {'kind':'ai','data':{**q,'_subject':course['name'],'_topic':topic['title']},'prompt':q['prompt'],'max_marks':q['max_marks']}
         except AIUnavailable as ex:
             if local:st.warning(str(ex)+' Using a local practice question instead.')
             else:st.warning(str(ex))
@@ -156,7 +188,7 @@ def assess_question(q,answer,second=False):
     if can_ai():
         try:
             with st.spinner('Checking the answer and looking for valid alternative approaches…'):
-                res=with_ai(evaluate,q['data'],answer,second=second)
+                res=with_ai(evaluate,q['data'],answer,second=second,rules=active_rules(read_quality()[0],q['data'].get('_subject',''),q['data'].get('_topic','')))
             return {'mark':res['indicative_mark'],'max':q['max_marks'],
                     'correct':res.get('correct_independently'),'uncertain':bool(res.get('needs_review')),
                     'strength':res.get('strength',''), 'next':res['next_step'], 'confidence':res['confidence']}
@@ -253,15 +285,106 @@ def testing(course,area,topic,tier):
     if st.button('Change topic / start over',key='clear_now'):
         reset_q();st.rerun()
 
+def academic_quality_manager():
+    st.title('Academic Quality Manager')
+    st.write('Approve permanent subject-specific marking and content rules, and exact-topic revision links. Changes go to the private GitHub repository when configured; students cannot edit these rules.')
+    if not quality_configured():
+        st.warning('Permanent saving is NOT configured. Add QUALITY_GITHUB_REPO, QUALITY_GITHUB_TOKEN and QUALITY_ADMIN_PASSWORD to Streamlit Secrets. No web-admin changes can be saved until then.')
+        st.info('The direct resource links bundled with V4.6 are still available without setup.')
+        return
+    if not st.session_state.admin_authorised:
+        with st.form('admin_login'):
+            candidate=st.text_input('Administrator password',type='password')
+            login=st.form_submit_button('Unlock academic review')
+        if login:
+            if password_valid(candidate):
+                st.session_state.admin_authorised=True;st.rerun()
+            else:st.error('Incorrect password.')
+        return
+    if st.button('Lock Academic Quality Manager'):
+        st.session_state.admin_authorised=False;st.rerun()
+    try:
+        data,sha,durable=quality_load()
+    except (RuntimeError,ValueError) as exc:
+        st.error('Unable to read quality data: '+str(exc));return
+    if not durable:
+        st.error('This is a preview. Permanent GitHub-backed storage is not active.');return
+    st.success(f"Permanent review storage connected · {sum(r.get('status')=='approved' for r in data['rules'])} rules · {sum(r.get('status')=='approved' for r in data['resources'])} approved direct links")
+    tab_rules,tab_links,tab_items=st.tabs(['Approve correction','Approve exact-topic link','Review / archive'])
+    with tab_rules:
+        issue_options=st.session_state.reported_issues
+        picked=None
+        if issue_options:
+            idx=st.selectbox('Optional tester report',[-1]+list(range(len(issue_options))),
+              format_func=lambda n: 'No report selected' if n==-1 else issue_options[n]['subject']+' · '+issue_options[n]['topic']+' · '+issue_options[n]['issue'][:60])
+            if idx!=-1:picked=issue_options[idx]
+        subject_choices=sorted(COURSES)
+        suggested_subject=(picked or {}).get('subject','Mathematics')
+        with st.form('approve_rule'):
+            scope=st.radio('Scope of approved correction',['topic','subject','all'],horizontal=True,
+                help='Topic rules affect only the exact topic label. Subject rules affect the whole subject.')
+            subject=st.selectbox('Subject',subject_choices,index=subject_choices.index(suggested_subject) if suggested_subject in subject_choices else 0)
+            topic=st.text_input('Exact topic label',value=(picked or {}).get('topic',''),help='Copy the exact topic title shown in Revise & Test for a topic-only rule.')
+            correction=st.text_area('Correct academic rule (review before approving)',height=140,
+                  placeholder='For percentage increases, accept both a multiplier method and finding the increase separately. Check each valid arithmetic step.')
+            example=st.text_area('Optional anonymised test example',height=90, value=(picked or {}).get('issue',''))
+            confirmed=st.checkbox('I have checked that this rule is academically correct and appropriately scoped.')
+            submit=st.form_submit_button('Approve and save permanent rule',type='primary')
+        if submit:
+            if not confirmed:st.error('Academic verification is required before approval.')
+            else:
+                try:
+                    revised=approve_rule(data,scope=scope,subject=subject,topic=topic,correction=correction,example=example)
+                    quality_save(revised,sha,action='approve rule');st.session_state.notes_cache={};reset_q();st.success('Rule permanently committed to GitHub. It will apply to later AI revision, questions and feedback.');st.rerun()
+                except (RuntimeError,ValueError) as exc:st.error(str(exc))
+    with tab_links:
+        with st.form('approve_resource'):
+            subject=st.selectbox('Subject',sorted(COURSES),key='link_subject')
+            topic=st.text_input('Exact topic label',key='link_topic',help='Must match the selected topic exactly, including spelling.')
+            title=st.text_input('Specific page or video title')
+            provider=st.text_input('Provider',placeholder='Corbettmaths, Oak National Academy, ...')
+            url=st.text_input('Direct HTTPS resource link',placeholder='https://provider.example/lesson/specific-topic')
+            note=st.text_area('Reviewer verification: explain the exact subject/topic match and free access')
+            verified=st.checkbox('I opened the exact link, checked it teaches this topic accurately, and confirmed free access for our testers.')
+            submit=st.form_submit_button('Approve and permanently save direct link',type='primary')
+        if submit:
+            if not verified:st.error('You must personally verify the linked page before approving.')
+            else:
+                try:
+                    revised=add_resource(data,subject=subject,topic=topic,title=title,url=url,provider=provider,reviewer_note=note)
+                    quality_save(revised,sha,action='approve direct resource');st.success('Verified exact-topic link saved to GitHub.');st.rerun()
+                except (RuntimeError,ValueError) as exc:st.error(str(exc))
+        st.caption('The system checks the URL format and approved provider, but cannot guarantee that a webpage stays accessible or accurate. Check links manually before approval.')
+    with tab_items:
+        for kind in ('rules','resources'):
+            st.markdown('#### '+('Approved academic rules' if kind=='rules' else 'Approved topic resources'))
+            for item in data[kind]:
+                if item.get('status')!='approved':continue
+                with st.expander(item.get('subject','All subjects')+' · '+item.get('topic','All topics')+' · '+item['id']):
+                    st.write(item.get('instruction') or item.get('title'))
+                    if item.get('url'):st.link_button('Check approved page',item['url'])
+                    if st.button('Archive this item',key='archive_'+item['id']):
+                        try:
+                            updated=archive(data,item['id']);quality_save(updated,sha,action='archive approved item');st.success('Archived permanently.');st.rerun()
+                        except (RuntimeError,ValueError) as exc:st.error(str(exc))
+        st.download_button('Export approved quality data for ChatGPT improvements',
+                           data=json.dumps(data,ensure_ascii=False,indent=2),
+                           file_name='dbsjp_approved_academic_quality.json',mime='application/json')
+        st.caption('For major code or marking-engine improvements, export this file and describe the issue in ChatGPT. Approved routine rules already persist across redeployments.')
+
+
 def main():
     with st.sidebar:
         st.title('📚 DBSJP Revision Hub')
-        page=st.radio('Navigation',['Revise & Test','AI connection test','Official past papers','Testing issues','How this prototype works'])
+        page=st.radio('Navigation',['Revise & Test','Academic Quality Manager','AI connection test','Official past papers','Testing issues','How this prototype works'])
         st.divider()
-        st.caption('V4.4 • Content-first • Level 2 only')
+        st.caption('V4.6 • Content-first • Level 2 only')
         st.caption('No accounts or stored progress')
         st.caption(('Gemini key configured (not yet verified)' if get_key() else 'Gemini not configured')+f' · {st.session_state.ai_calls}/{MAX_AI_CALLS_PER_SESSION} session calls')
         if get_key():st.caption('Each new AI guide, question or marking attempt uses the shared API project’s free allowance.')
+    if page=='Academic Quality Manager':
+        academic_quality_manager()
+        return
     if page=='AI connection test':
         st.title('Gemini connection diagnostics')
         st.write('This test uses your configured key without displaying it. It makes one small Gemini request and may count towards your free quota.')
@@ -317,7 +440,7 @@ def main():
         return
     if page=='Testing issues':
         st.title('Content and marking issues')
-        st.write('Review the issues flagged during this browser session. These are not uploaded anywhere or saved to a database.')
+        st.write('Review student/tester reports. They remain in this browser session until exported or converted to a reviewed, approved rule by the administrator.')
         if st.session_state.reported_issues:
             for item in st.session_state.reported_issues:
                 with st.expander(item['subject']+' · '+item['topic']):
@@ -329,7 +452,7 @@ def main():
         return
     if page=='How this prototype works':
         st.title('Version 4: scope and limitations')
-        st.write('This release covers DBSJP Level 2 subjects and includes teaching maps from school documents, original AI question generation, second attempts and indicative feedback. No accounts or data are saved to a progress database.')
+        st.write('This release covers DBSJP Level 2 subjects, verified direct resource links, original AI questions, second attempts and indicative feedback. No student accounts or progress database are used. Approved corrections are stored in a private GitHub repository only when configured.')
         st.info('Mathematics: four existing skills have SymPy-verified exact answers; the rest use provisional AI marking. Extended writing, practical performance and coursework cannot be marked as reliably as a human examiner.')
         st.warning('Free-tier usage is shared across visitors. Session limits are a courtesy, not a global usage cap. Keep paid billing off in the AI project. Do not enter student names or identifying personal data.')
         st.write('Unverified micro-specification mapping is labelled. School teaching sequence does not itself establish exact examination-board coverage. Revision notes generated on demand must be checked.')
