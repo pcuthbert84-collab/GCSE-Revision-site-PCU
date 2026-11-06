@@ -195,7 +195,7 @@ def create_exam_question(course,topic,area,mode,tier='As taught',difficulty='Sta
     Never silently fall back to a different format or mislabel a 4-mark
     question as a 16-mark essay.
     """
-    if not isinstance(mode,dict) or mode.get('marks') not in (6,8,16,20,30):
+    if not isinstance(mode,dict) or mode.get('marks') not in (6,8,16,20,30,40):
         raise AIUnavailable('Selected exam-practice format is unavailable.')
     instruction=exam_instruction(mode,course,topic)
     if not instruction:
@@ -205,7 +205,7 @@ def create_exam_question(course,topic,area,mode,tier='As taught',difficulty='Sta
     payload['requested_max_marks']=mode['marks']
     raw=request_json(COMMON_ACADEMIC_RULES+MATH_DISPLAY_RULES+
         instruction+_approved_rule_appendix(rules),payload,max_output_tokens=4096)
-    result=_complete_question(raw,max_allowed=30)
+    result=_complete_question(raw,max_allowed=40)
     if result['max_marks']!=mode['marks'] or len(result['marking_points'])!=4:
         raise AIUnavailable('Gemini did not honour the chosen exam format and marking total. Nothing was graded; please retry.')
     if mode['id']=='literature_unseen' and 'original' not in result['prompt'].lower():
