@@ -46,6 +46,16 @@ def topic_groups(name):
     if c['mapped']:
         for year in (10,11):
             entries=[x for x in c['mapped'] if x['year']==year]
+            # The school-map export contains duplicated English Language and
+            # Literature rows. Hide plainly misfiled ones without changing the
+            # original uploaded source or pretending to infer unknown options.
+            if name=='English Literature':
+                entries=[x for x in entries if 'non-fiction texts (reading)' not in
+                         (x['title']+' '+x['source_text']).casefold()]
+            elif name=='English Language':
+                entries=[x for x in entries if not any(
+                    phrase in (x['title']+' '+x['source_text']).casefold()
+                    for phrase in ('poetry & prose nea','literature nea'))]
             if entries:result[f'Year {year} · DBSJP taught curriculum']=[{'title':x['title'], 'source':x['source_text'], 'file':x['source_file'], 'year':year, 'kind':'school'} for x in entries]
     # Important: these are from the booklet topic outline and may need further spec audit.
     for group, topics in c.get('themes',{}).items():
