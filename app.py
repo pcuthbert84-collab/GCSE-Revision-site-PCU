@@ -15,7 +15,7 @@ from engine.exam_modes import exam_modes
 from engine.quality_store import (load as quality_load, save as quality_save, configured as quality_configured,
     password_valid, approve_rule, add_resource, active_rules, archive, validate_direct_url)
 from courses.verified_resources import topic_resources
-from courses.subject_resource_atlas import qualification_reference,directory_resources,topic_references
+from courses.subject_resource_atlas import qualification_reference,directory_resources,topic_references,SEPARATE_SCIENCE_SPECS
 from courses.corbett_catalogue import fetch_catalogue, automatic_resources, candidate_matches, resources_for_entry, normalize
 from engine.math_display import stacked_fractions
 from engine.learning_path import learning_checks, suggested_route
@@ -112,10 +112,10 @@ def show_resources(course,topic):
             st.success('Resource issue added to Testing issues for administrator review.')
 
 
-def show_subject_library(course,topic):
+def show_subject_library(course,topic,area=''):
     """Clearly distinguish official specification from general revision catalogues."""
     official=qualification_reference(course)
-    related=topic_references(course['name'],topic['title'],topic.get('source',''))
+    related=topic_references(course['name'],topic['title'],topic.get('source',''),area)
     directories=directory_resources(course['name'])
     with st.expander('Official course specification and subject resource library'):
         st.caption('These are external websites. A catalogue is not necessarily a direct lesson, and some providers offer paid options. Always use your DBSJP exam route and prescribed texts.')
@@ -123,7 +123,9 @@ def show_subject_library(course,topic):
             st.link_button(official['title'],official['url'])
             st.caption('Official awarding-body qualification page. Check modules, examination series, chosen units and subject options.')
         elif course['name']=='Separate Sciences':
-            st.info('AQA Separate Sciences comprise three qualifications (8461 Biology, 8462 Chemistry, 8463 Physics). Ask your teacher which specification and tier apply.')
+            st.info('AQA Separate Sciences comprise three qualifications (8461 Biology, 8462 Chemistry, 8463 Physics). Confirm the subject and tier.')
+            for reference in SEPARATE_SCIENCE_SPECS:
+                st.link_button(reference['title'],reference['url'])
         else:
             st.info('An exact official specification link is not yet confirmed for this course code; ask your teacher before relying on an external syllabus.')
         if related:
@@ -705,7 +707,7 @@ def main():
     if not course['spec_verified']:
         st.caption('⚠️ Course/code mapping is recorded, but full specification-point checking remains to be completed. Marks are practice estimates.')
     if st.session_state.question_key and st.session_state.question_key[:4]!=(subject,area,topic['title'],tier):reset_q()
-    show_subject_library(course,topic)
+    show_subject_library(course,topic,area)
     st.markdown('### Choose how to study')
     option=st.radio('Learning pathway',['Learn the topic','Exam practice'],
         key='revision_route',horizontal=True,
