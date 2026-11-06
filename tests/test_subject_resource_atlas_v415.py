@@ -42,6 +42,25 @@ class ResourceAtlasTests(unittest.TestCase):
     def test_wrong_discipline_does_not_display_direct_science_page(self):
         self.assertEqual(pmt_topic_resources("Combined Science","Energy","Chemistry"),[])
         self.assertEqual(pmt_topic_resources("Separate Sciences","Waves","Biology"),[])
+    def test_real_school_map_science_titles_match(self):
+        row=pmt_topic_resources("Combined Science","Y10 · Biology: Bioenergetics","Year 10 · DBSJP taught curriculum")
+        self.assertEqual(len(row),1)
+        self.assertIn("/bioenergetics/",row[0]["url"])
+        rows=pmt_topic_resources("Combined Science","Y10 · Physics: Forces","Year 10")
+        self.assertEqual(len(rows),1)
+        self.assertIn("/forces/",rows[0]["url"])
+    def test_prefix_conflict_fails_closed(self):
+        self.assertEqual(pmt_topic_resources("Combined Science","Y10 · Physics: Forces","Biology"),[])
+    def test_business_exact_4bs1_links(self):
+        from courses.subject_resource_atlas import business_topic_resources
+        self.assertIn("/break-even/",business_topic_resources("Business Studies","Break-even")[0]["url"])
+        self.assertEqual(business_topic_resources("Business Studies","Break-even",code="1BS0"),[])
+        self.assertEqual(business_topic_resources("History","Break-even"),[])
+        self.assertEqual(business_topic_resources("Business Studies","Y10 · Theme 2: People in Business"),[])
+    def test_business_4bs1_direct_lesson_catalogue_size(self):
+        from courses.subject_resource_atlas import BUSINESS_TOPIC_LESSONS
+        self.assertGreaterEqual(len(BUSINESS_TOPIC_LESSONS),12)
+        self.assertEqual(len(BUSINESS_TOPIC_LESSONS),len(set(BUSINESS_TOPIC_LESSONS.values())))
     def test_space_physics_not_trilogy(self):
         self.assertEqual(pmt_topic_resources("Combined Science","Space physics","Physics"),[])
         self.assertEqual(len(pmt_topic_resources("Separate Sciences","Space physics","Physics")),1)
