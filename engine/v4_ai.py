@@ -3,6 +3,7 @@ from engine.ai import request_json, AIUnavailable
 from engine.academic_teaching import teaching_context
 from courses.subject_resource_atlas import metadata_for_ai
 from courses.specification_scopes import specification_scope
+from courses.scope_filters import selected_source
 from engine.exam_modes import exam_instruction
 import re
 
@@ -16,7 +17,7 @@ def safe_source(text):
 
 
 def _payload(course,topic,area,tier,difficulty):
-    evidence=safe_source(topic.get('source',''))
+    evidence=safe_source(selected_source(course, topic))
     is_school=topic.get('kind')=='school'
     return dict(
         subject=course['name'], qualification=course.get('kind'),
